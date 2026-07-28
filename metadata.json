@@ -1,0 +1,6 @@
+{
+  "name": "NGS Alignment Benchmark Suite",
+  "description": "High-rigor scientific comparison framework for Dragen, NextGENe, and BWA-Markdup WES alignments with LaTeX report and R figure generators.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

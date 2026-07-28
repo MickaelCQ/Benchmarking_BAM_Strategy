@@ -34,6 +34,7 @@ import {
   Filter,
   Activity,
   Info,
+  Download,
 } from "lucide-react";
 
 export const GeneCoverageAnalyzer: React.FC = () => {
@@ -43,6 +44,7 @@ export const GeneCoverageAnalyzer: React.FC = () => {
   const [parsedCustomExons, setParsedCustomExons] = useState<ExonCoverage[] | null>(null);
   const [customBedError, setCustomBedError] = useState<string | null>(null);
   const [copiedBash, setCopiedBash] = useState(false);
+  const [copiedPy, setCopiedPy] = useState(false);
   const [copiedR, setCopiedR] = useState(false);
   const [depthThreshold, setDepthThreshold] = useState<number>(30); // 20x, 30x, 50x
   const [displayOrder, setDisplayOrder] = useState<"biological" | "genomic">("biological");
@@ -168,17 +170,136 @@ export const GeneCoverageAnalyzer: React.FC = () => {
     }
   };
 
-  const sampleMosdepthBash = `# Execution sur le cluster Linux
-# BED de capture fourni (/NFS/cluster-share/home/mcoquerelle/Explorations/Bench_Alignment/bed/capture_panel.bed)
-BED_FILE="/NFS/cluster-share/home/mcoquerelle/Explorations/Bench_Alignment/bed/capture_panel.bed"
+  const handleExportCSV = () => {
+    const headers = [
+      "Gene",
+      "Exon_Region",
+      "Chr",
+      "Start",
+      "End",
+      "Length_bp",
+      "GC_Pct",
+      "DRAGEN_Depth_X",
+      "DRAGEN_30X_Pct",
+      "NextGENe_Depth_X",
+      "NextGENe_30X_Pct",
+      "BWA_Depth_X",
+      "BWA_30X_Pct",
+      "Notes",
+    ];
 
-# Calculation de la couverture par region BED avec mosdepth
-mosdepth -t 8 -b $BED_FILE --fast-mode output_dragen /path/to/MF1284_dragen.bam
-mosdepth -t 8 -b $BED_FILE --fast-mode output_nextgene /path/to/MF1284_nextgene.bam
-mosdepth -t 8 -b $BED_FILE --fast-mode output_bwamarkdup /path/to/MF1284_bwa.bam
+    const rows = activeExons.map((e) => [
+      currentProfile.geneSymbol,
+      `"${e.exonId}"`,
+      e.chr,
+      e.start,
+      e.end,
+      e.lengthBp,
+      e.gcContentPct,
+      e.dragenDepth,
+      e.dragen30xPct,
+      e.nextgeneDepth,
+      e.nextgene30xPct,
+      e.bwaDepth,
+      e.bwa30xPct,
+      `"${e.notes || ""}"`,
+    ]);
 
-# Extraction des resultats par gène
-zcat output_dragen.regions.bed.gz | grep "${currentProfile.geneSymbol}" | head -n 30`;
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `coverage_${currentProfile.geneSymbol}_metrics.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const sampleMosdepthBash = `# 1. Placement dans le dossier de travail
+cd /NFS/cluster-share/home/mcoquerelle/Explorations/Bench_Alignment
+
+# 2. Nettoyage securise des anciens resultats mosdepth (BAMs/BAIs intacts)
+rm -f output_*.mosdepth.* output_*.regions.bed* output_*.thresholds.bed* output_*.summary.txt
+
+BED_FILE="./bed/capture_panel.bed"
+SAMPLES=("MF1284" "MF1358" "MF746")
+
+# 3. Boucle automatique mosdepth sur tous les echantillons & aligneurs
+for SAMPLE in "\${SAMPLES[@]}"; do
+  echo "=== Traitement Mosdepth : $SAMPLE ==="
+  mosdepth -t 8 -b $BED_FILE --thresholds 20,30,50 "output_\${SAMPLE}_dragen" "\${SAMPLE}_Dragen.bam"
+  mosdepth -t 8 -b $BED_FILE --thresholds 20,30,50 "output_\${SAMPLE}_nextgene" "\${SAMPLE}_nextgene.bam"
+  mosdepth -t 8 -b $BED_FILE --thresholds 20,30,50 "output_\${SAMPLE}_bwamarkdup" "\${SAMPLE}.markdup.bam"
+done
+
+echo "Calcul mosdepth termine avec succes pour MF1284, MF1358 et MF746 !"`;
+
+  const samplePythonParser = `# parse_mosdepth.py - Convertit les sorties mosdepth (3 samples x 3 aligneurs) en JSON
+import gzip, os, json
+import pandas as pd
+
+samples = ["MF1284", "MF1358", "MF746"]
+aligners = [("dragen", "dragen"), ("nextgene", "nextgene"), ("bwamarkdup", "bwa")]
+
+def parse_mosdepth_for_sample(sample):
+    regions_dict = {}
+
+    for align_key, short_name in aligners:
+        reg_file = f"output_{sample}_{align_key}.regions.bed.gz"
+        thresh_file = f"output_{sample}_{align_key}.thresholds.bed.gz"
+
+        if not os.path.exists(reg_file):
+            print(f"⚠️ Fichier non trouve : {reg_file}")
+            continue
+
+        # 1. Parsing profondeur moyenne par region (regions.bed.gz)
+        with gzip.open(reg_file, 'rt') as f:
+            for line in f:
+                if line.startswith('#'): continue
+                parts = line.strip().split('\t')
+                if len(parts) >= 5:
+                    chrom, start, end, gene, depth = parts[0], int(parts[1]), int(parts[2]), parts[3], float(parts[4])
+                    key = (chrom, start, end, gene)
+                    if key not in regions_dict:
+                        regions_dict[key] = {
+                            'sample': sample,
+                            'chr': chrom,
+                            'start': start,
+                            'end': end,
+                            'gene': gene,
+                            'lengthBp': max(1, end - start)
+                        }
+                    regions_dict[key][f'{short_name}Depth'] = round(depth, 2)
+
+        # 2. Parsing seuils de couverture 20x, 30x, 50x (thresholds.bed.gz)
+        if os.path.exists(thresh_file):
+            with gzip.open(thresh_file, 'rt') as f:
+                for line in f:
+                    if line.startswith('#'): continue
+                    parts = line.strip().split('\t')
+                    if len(parts) >= 7:
+                        chrom, start, end, gene = parts[0], int(parts[1]), int(parts[2]), parts[3]
+                        length = max(1, end - start)
+                        key = (chrom, start, end, gene)
+                        if key in regions_dict:
+                            regions_dict[key][f'{short_name}20xPct'] = round(int(parts[4]) / length * 100, 1)
+                            regions_dict[key][f'{short_name}30xPct'] = round(int(parts[5]) / length * 100, 1)
+                            regions_dict[key][f'{short_name}50xPct'] = round(int(parts[6]) / length * 100, 1)
+
+    if not regions_dict:
+        return None
+
+    return pd.DataFrame(list(regions_dict.values()))
+
+all_dfs = [parse_mosdepth_for_sample(s) for s in samples]
+all_dfs = [df for df in all_dfs if df is not None and not df.empty]
+
+if all_dfs:
+    final_df = pd.concat(all_dfs, ignore_index=True).fillna(0)
+    final_df.to_json('bench_coverage_metrics.json', orient='records', indent=2)
+    print(f"✅ Succes ! {len(final_df)} regions exportees dans 'bench_coverage_metrics.json'")
+else:
+    print("❌ Aucun fichier de sortie mosdepth trouve.")`;
 
   const sampleRCode = `# Analyse de couverture par exon avec R / ggplot2
 library(tidyverse)
@@ -529,16 +650,25 @@ ggplot(df, aes(x = factor(start), y = depth, fill = Aligner)) +
 
       {/* Detailed Exon Breakdown Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
+        <div className="bg-slate-900 text-white px-5 py-3 flex flex-wrap items-center justify-between gap-2">
           <div className="font-bold text-xs uppercase tracking-wider flex items-center space-x-2">
             <Layers className="h-4 w-4 text-sky-400" />
             <span>
               Tableau des Intervalles BED du Gène {currentProfile.geneSymbol} ({activeExons.length} Exons)
             </span>
           </div>
-          <span className="text-xs text-slate-400 font-mono">
-            {currentProfile.chr} (Brin {currentProfile.strand})
-          </span>
+          <div className="flex items-center space-x-3">
+            <span className="text-xs text-slate-400 font-mono hidden sm:inline">
+              {currentProfile.chr} (Brin {currentProfile.strand})
+            </span>
+            <button
+              onClick={handleExportCSV}
+              className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold px-3 py-1 rounded-lg transition-colors flex items-center space-x-1.5 shadow-sm"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Exporter CSV ({currentProfile.geneSymbol})</span>
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -598,13 +728,13 @@ ggplot(df, aes(x = factor(start), y = depth, fill = Aligner)) +
       </div>
 
       {/* Cluster Code Snippets */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Bash Pipeline Box */}
         <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 space-y-3 shadow-lg">
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <div className="flex items-center space-x-2 text-emerald-400">
               <Terminal className="h-4 w-4" />
-              <span className="font-bold text-xs">Commande Bash Mosdepth (Cluster Linux)</span>
+              <span className="font-bold text-xs">1. Execution Mosdepth (Bash)</span>
             </div>
             <button
               onClick={() => {
@@ -615,11 +745,35 @@ ggplot(df, aes(x = factor(start), y = depth, fill = Aligner)) +
               className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-2.5 py-1 rounded font-semibold border border-slate-700 flex items-center space-x-1"
             >
               {copiedBash ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-              <span>{copiedBash ? "Copied!" : "Copy Code"}</span>
+              <span>{copiedBash ? "Copied!" : "Copy"}</span>
             </button>
           </div>
-          <pre className="p-3 bg-slate-950 text-emerald-300 font-mono text-[11px] rounded-lg overflow-x-auto leading-relaxed select-all">
+          <pre className="p-3 bg-slate-950 text-emerald-300 font-mono text-[11px] rounded-lg overflow-x-auto leading-relaxed select-all max-h-52">
             <code>{sampleMosdepthBash}</code>
+          </pre>
+        </div>
+
+        {/* Python Exporter Box */}
+        <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 space-y-3 shadow-lg">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <div className="flex items-center space-x-2 text-amber-400">
+              <Code className="h-4 w-4" />
+              <span className="font-bold text-xs">2. Convertisseur JSON (Python)</span>
+            </div>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(samplePythonParser);
+                setCopiedPy(true);
+                setTimeout(() => setCopiedPy(false), 2000);
+              }}
+              className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-2.5 py-1 rounded font-semibold border border-slate-700 flex items-center space-x-1"
+            >
+              {copiedPy ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+              <span>{copiedPy ? "Copied!" : "Copy"}</span>
+            </button>
+          </div>
+          <pre className="p-3 bg-slate-950 text-amber-300 font-mono text-[11px] rounded-lg overflow-x-auto leading-relaxed select-all max-h-52">
+            <code>{samplePythonParser}</code>
           </pre>
         </div>
 
@@ -628,7 +782,7 @@ ggplot(df, aes(x = factor(start), y = depth, fill = Aligner)) +
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <div className="flex items-center space-x-2 text-sky-400">
               <Code className="h-4 w-4" />
-              <span className="font-bold text-xs">Script R ggplot2 (Figure par Exon)</span>
+              <span className="font-bold text-xs">3. Figure R ggplot2 (Article/Poster)</span>
             </div>
             <button
               onClick={() => {
@@ -639,10 +793,10 @@ ggplot(df, aes(x = factor(start), y = depth, fill = Aligner)) +
               className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-2.5 py-1 rounded font-semibold border border-slate-700 flex items-center space-x-1"
             >
               {copiedR ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-              <span>{copiedR ? "Copied!" : "Copy Code"}</span>
+              <span>{copiedR ? "Copied!" : "Copy"}</span>
             </button>
           </div>
-          <pre className="p-3 bg-slate-950 text-sky-300 font-mono text-[11px] rounded-lg overflow-x-auto leading-relaxed select-all">
+          <pre className="p-3 bg-slate-950 text-sky-300 font-mono text-[11px] rounded-lg overflow-x-auto leading-relaxed select-all max-h-52">
             <code>{sampleRCode}</code>
           </pre>
         </div>

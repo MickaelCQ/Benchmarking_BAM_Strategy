@@ -47,7 +47,10 @@ export const VariantLossCalculator: React.FC = () => {
 
   const targetVafDecimal = targetVafPct / 100;
 
-  // Minimum required depth to achieve targetConfidence (e.g. 99%) at targetVaf
+  const formattedConfidence =
+    targetConfidence === 0.999 ? "99.9%" : targetConfidence === 0.99 ? "99%" : `${(targetConfidence * 100).toFixed(0)}%`;
+
+  // Minimum required depth to achieve targetConfidence (e.g. 99.9%, 99%, 95%) at targetVaf
   const requiredDepth = useMemo(() => {
     return findRequiredDepthForConfidence(targetVafDecimal, targetConfidence, minReadsThreshold);
   }, [targetVafDecimal, targetConfidence, minReadsThreshold]);
@@ -181,14 +184,14 @@ export const VariantLossCalculator: React.FC = () => {
                 </p>
               </div>
 
-              {/* Box 2: Loi Binomiale */}
+              {/* Box 2: Loi Binomiale sur Profondeur Dé-dupliquée */}
               <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-1.5">
                 <div className="flex items-center space-x-1.5 font-bold text-indigo-950 text-xs">
                   <Activity className="w-4 h-4 text-sky-600" />
-                  <span>2. Loi Binomiale X ~ B(D, VAF)</span>
+                  <span>2. Loi Binomiale X ~ B(D_dedup, VAF)</span>
                 </div>
                 <p className="text-[11px] text-slate-600 leading-relaxed">
-                  Soit D la profondeur locale (nombre total de reads) et VAF la fréquence allélique. Le nombre de reads mutés X suit une loi binomiale exacte.
+                  Soit <strong>D (D_dedup)</strong> la profondeur <i>après dé-duplication</i> (Picard MarkDuplicates ou dé-duplication UMIs / DRAGEN) et VAF la fréquence allélique.
                 </p>
               </div>
 
@@ -368,13 +371,23 @@ export const VariantLossCalculator: React.FC = () => {
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700">Niveau de Confiance Cible :</span>
               <span className="bg-emerald-600 text-white font-mono font-extrabold text-xs px-2 py-0.5 rounded">
-                {(targetConfidence * 100).toFixed(0)}%
+                {formattedConfidence}
               </span>
             </div>
-            <div className="grid grid-cols-2 gap-2 pt-1">
+            <div className="grid grid-cols-3 gap-1.5 pt-1">
+              <button
+                onClick={() => setTargetConfidence(0.999)}
+                className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all ${
+                  targetConfidence === 0.999
+                    ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                    : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                }`}
+              >
+                99.9% (Perte ≤ 0.1%)
+              </button>
               <button
                 onClick={() => setTargetConfidence(0.99)}
-                className={`py-1.5 px-3 rounded-lg text-xs font-bold border transition-all ${
+                className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all ${
                   targetConfidence === 0.99
                     ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
                     : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
@@ -384,7 +397,7 @@ export const VariantLossCalculator: React.FC = () => {
               </button>
               <button
                 onClick={() => setTargetConfidence(0.95)}
-                className={`py-1.5 px-3 rounded-lg text-xs font-bold border transition-all ${
+                className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all ${
                   targetConfidence === 0.95
                     ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
                     : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
@@ -394,7 +407,7 @@ export const VariantLossCalculator: React.FC = () => {
               </button>
             </div>
             <p className="text-[11px] text-slate-500 leading-snug">
-              Détermine le seuil de profondeur minimum requis D<sub>{(targetConfidence * 100).toFixed(0)}%</sub>.
+              Détermine le seuil de profondeur minimum requis D<sub>{formattedConfidence}</sub>.
             </p>
           </div>
         </div>
@@ -404,14 +417,14 @@ export const VariantLossCalculator: React.FC = () => {
           {/* Required Depth Metric */}
           <div className="p-4 rounded-xl bg-gradient-to-br from-indigo-900 to-slate-900 text-white shadow-md border border-indigo-700 space-y-1">
             <div className="flex items-center justify-between text-indigo-300">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Profondeur Requise ($D$)</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider">Profondeur Requise (D_dedup)</span>
               <Zap className="h-4 w-4 text-amber-400" />
             </div>
             <div className="text-2xl font-black text-white font-mono">
               {requiredDepth === Infinity ? "N/A" : `${requiredDepth.toLocaleString()}x`}
             </div>
             <div className="text-[11px] text-indigo-200">
-              Pour une détection à <strong>{(targetConfidence * 100).toFixed(0)}%</strong> à <strong>{targetVafPct}% VAF</strong>
+              Pour une détection à <strong>{formattedConfidence}</strong> à <strong>{targetVafPct}% VAF</strong>
             </div>
           </div>
 
@@ -481,7 +494,7 @@ export const VariantLossCalculator: React.FC = () => {
           <div className="flex items-center space-x-2 text-xs font-mono">
             <span className="text-slate-500">Seuil visuel :</span>
             <span className="bg-indigo-100 text-indigo-900 font-bold px-2 py-0.5 rounded">
-              Ligne pointillée = Target {(targetConfidence * 100).toFixed(0)}%
+              Ligne pointillée = Target {formattedConfidence}
             </span>
           </div>
         </div>
@@ -507,7 +520,7 @@ export const VariantLossCalculator: React.FC = () => {
                 labelFormatter={(label) => `Profondeur D = ${label}x`}
               />
               <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: "12px" }} />
-              <ReferenceLine y={targetConfidence * 100} stroke="#4f46e5" strokeDasharray="5 5" label={{ value: `Seuil ${targetConfidence * 100}%`, fill: "#4f46e5", fontSize: 11 }} />
+              <ReferenceLine y={targetConfidence * 100} stroke="#4f46e5" strokeDasharray="5 5" label={{ value: `Seuil ${formattedConfidence}`, fill: "#4f46e5", fontSize: 11 }} />
 
               <Line type="monotone" dataKey="vaf_1.0%" name="VAF 1.0%" stroke="#e11d48" strokeWidth={2} dot={false} />
               <Line type="monotone" dataKey="vaf_5.0%" name="VAF 5.0%" stroke="#f59e0b" strokeWidth={2} dot={false} />

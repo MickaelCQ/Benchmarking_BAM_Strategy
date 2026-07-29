@@ -7,7 +7,6 @@ import { CtDnaLodCalculator } from "./components/CtDnaLodCalculator";
 import { RScriptGenerator } from "./components/RScriptGenerator";
 import { LaTeXReportGenerator } from "./components/LaTeXReportGenerator";
 import { CliPipelineGuide } from "./components/CliPipelineGuide";
-import { AiAdvisor } from "./components/AiAdvisor";
 import { generateRPublicationScript } from "./data/rScriptTemplates";
 import { generateLaTeXManuscript } from "./data/latexTemplates";
 import { generateClusterBenchmarkBashScript } from "./data/cliScripts";
@@ -108,7 +107,6 @@ export default function App() {
         {activeTab === "r-scripts" && <RScriptGenerator />}
         {activeTab === "latex" && <LaTeXReportGenerator />}
         {activeTab === "cli" && <CliPipelineGuide />}
-        {activeTab === "ai-advisor" && <AiAdvisor />}
       </main>
 
       {/* Export All Package Modal */}

@@ -91,7 +91,6 @@ export const Header: React.FC<HeaderProps> = ({
             { id: "r-scripts", label: "R Publication Figures", icon: Code },
             { id: "latex", label: "LaTeX Journal Paper", icon: FileText },
             { id: "cli", label: "Cluster Bash Pipeline", icon: Terminal },
-            { id: "ai-advisor", label: "AI Scientific Reviewer", icon: Sparkles },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;

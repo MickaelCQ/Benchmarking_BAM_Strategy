@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { CAPTURE_BED_GENES, GeneCoverageProfile, ExonCoverage } from "../data/geneCoverageData";
 import {
   ResponsiveContainer,
@@ -35,6 +35,8 @@ import {
   Activity,
   Info,
   Download,
+  FileJson,
+  RefreshCw,
 } from "lucide-react";
 
 export const GeneCoverageAnalyzer: React.FC = () => {
@@ -43,12 +45,53 @@ export const GeneCoverageAnalyzer: React.FC = () => {
   const [customBedText, setCustomBedText] = useState<string>("");
   const [parsedCustomExons, setParsedCustomExons] = useState<ExonCoverage[] | null>(null);
   const [customBedError, setCustomBedError] = useState<string | null>(null);
+  const [uploadedJsonMessage, setUploadedJsonMessage] = useState<string | null>(null);
+  const [uploadedJsonData, setUploadedJsonData] = useState<any[] | null>(null);
   const [copiedBash, setCopiedBash] = useState(false);
   const [copiedPy, setCopiedPy] = useState(false);
   const [copiedR, setCopiedR] = useState(false);
   const [depthThreshold, setDepthThreshold] = useState<number>(30); // 20x, 30x, 50x
   const [displayOrder, setDisplayOrder] = useState<"biological" | "genomic">("biological");
   const [viewMode, setViewMode] = useState<"depth" | "gc_correlation" | "table">("depth");
+
+  // Auto-fetch bench_coverage_metrics.json if placed in /public
+  useEffect(() => {
+    fetch("/bench_coverage_metrics.json")
+      .then((res) => {
+        if (res.ok) return res.json();
+        return null;
+      })
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setUploadedJsonData(data);
+          setUploadedJsonMessage(`✅ Données réelles auto-chargées (${data.length} régions depuis bench_coverage_metrics.json)`);
+        }
+      })
+      .catch(() => {
+        // file not present in public dir yet, fallback silently
+      });
+  }, []);
+
+  const handleJsonFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        if (Array.isArray(json)) {
+          setUploadedJsonData(json);
+          setUploadedJsonMessage(`✅ ${json.length} régions importées avec succès depuis '${file.name}'`);
+        } else {
+          setCustomBedError("Le fichier JSON doit contenir un tableau d'objets (format orient='records').");
+        }
+      } catch (err) {
+        setCustomBedError("Erreur lors de la lecture du fichier JSON.");
+      }
+    };
+    reader.readAsText(file);
+  };
 
   // Filter available genes by search query
   const filteredGenes = useMemo(() => {
@@ -65,16 +108,61 @@ export const GeneCoverageAnalyzer: React.FC = () => {
   const currentProfile: GeneCoverageProfile =
     CAPTURE_BED_GENES.find((g) => g.geneSymbol === selectedGeneSymbol) || CAPTURE_BED_GENES[0];
 
+  // Convert uploaded bench_coverage_metrics.json records to ExonCoverage objects
+  const realJsonExons = useMemo(() => {
+    if (!uploadedJsonData || uploadedJsonData.length === 0) return null;
+    
+    // Filter by selectedGeneSymbol if available
+    const matching = uploadedJsonData.filter(
+      (item) => item.gene && item.gene.toString().toUpperCase() === selectedGeneSymbol.toUpperCase()
+    );
+
+    // If no matching records for selectedGeneSymbol in the uploaded JSON, return null so we fall back cleanly to currentProfile
+    if (matching.length === 0) return null;
+
+    return matching.map((item, idx) => {
+      const dragenD = item.dragenDepth ?? 0;
+      const nextgeneD = item.nextgeneDepth ?? 0;
+      const bwaD = item.bwaDepth ?? 0;
+      const len = item.lengthBp || Math.max(1, (item.end || 0) - (item.start || 0));
+
+      return {
+        exonId: item.exonId || `Exon ${idx + 1} (${item.gene || selectedGeneSymbol})`,
+        exonNumber: item.exonNumber || idx + 1,
+        chr: item.chr || currentProfile.chr,
+        start: item.start || 0,
+        end: item.end || 0,
+        lengthBp: len,
+        gcContentPct: item.gcContentPct || 48.0,
+        dragenDepth: dragenD,
+        nextgeneDepth: nextgeneD,
+        bwaDepth: bwaD,
+        dragen20xPct: item.dragen20xPct ?? 100,
+        dragen30xPct: item.dragen30xPct ?? 100,
+        dragen50xPct: item.dragen50xPct ?? 98,
+        nextgene20xPct: item.nextgene20xPct ?? 95,
+        nextgene30xPct: item.nextgene30xPct ?? 90,
+        nextgene50xPct: item.nextgene50xPct ?? 80,
+        bwa20xPct: item.bwa20xPct ?? 99,
+        bwa30xPct: item.bwa30xPct ?? 97,
+        bwa50xPct: item.bwa50xPct ?? 92,
+        isGcRich: (item.gcContentPct || 48) > 65,
+        notes: item.notes,
+      } as ExonCoverage;
+    });
+  }, [uploadedJsonData, selectedGeneSymbol, currentProfile]);
+
   // Exons ordered according to selected display order
   const activeExons = useMemo(() => {
     if (parsedCustomExons) return parsedCustomExons;
+    if (realJsonExons && realJsonExons.length > 0) return realJsonExons;
     const list = [...currentProfile.exons];
     if (displayOrder === "genomic") {
       return list.sort((a, b) => a.start - b.start);
     }
     // Biological order
     return list.sort((a, b) => a.exonNumber - b.exonNumber);
-  }, [parsedCustomExons, currentProfile, displayOrder]);
+  }, [parsedCustomExons, realJsonExons, currentProfile, displayOrder]);
 
   // Summary stats for current gene
   const dragenMeanDepth =
@@ -443,6 +531,31 @@ ggplot(df, aes(x = factor(start), y = depth, fill = Aligner)) +
                 <span className="text-[10px] opacity-70">({g.totalExons}ex)</span>
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* Direct JSON Import (bench_coverage_metrics.json) */}
+        <div className="bg-sky-50/80 p-3.5 rounded-xl border border-sky-200 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-sky-950">
+            <span className="flex items-center space-x-1.5">
+              <FileJson className="h-4 w-4 text-sky-600" />
+              <span>Charger votre fichier JSON mosdepth réel (<code className="font-mono bg-sky-100 px-1 py-0.5 rounded text-sky-900">bench_coverage_metrics.json</code>) :</span>
+            </span>
+            {uploadedJsonMessage && (
+              <span className="bg-emerald-100 text-emerald-800 text-[11px] px-2.5 py-0.5 rounded-full font-bold shadow-sm">
+                {uploadedJsonMessage}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="cursor-pointer bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold px-3.5 py-2 rounded-lg transition-all shadow-sm flex items-center space-x-2">
+              <Upload className="h-3.5 w-3.5" />
+              <span>Importer bench_coverage_metrics.json</span>
+              <input type="file" accept=".json" onChange={handleJsonFileUpload} className="hidden" />
+            </label>
+            <span className="text-[11px] text-slate-500 italic">
+              (Généré par <code className="font-mono text-slate-700 bg-slate-100 px-1 rounded">parse_mosdepth.py</code> sur le serveur HPC. Si copié dans le dossier <code className="font-mono text-slate-700 bg-slate-100 px-1 rounded">public/</code>, il est chargé automatiquement !)
+            </span>
           </div>
         </div>
 

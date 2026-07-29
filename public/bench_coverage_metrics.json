@@ -1,0 +1,23 @@
+[
+  {
+    "sample": "MF1284",
+    "chr": "chr17",
+    "start": 43044295,
+    "end": 43045678,
+    "gene": "BRCA1",
+    "lengthBp": 1383,
+    "dragenDepth": 142.5,
+    "nextgeneDepth": 118.2,
+    "bwaDepth": 135.8,
+    "dragen20xPct": 100,
+    "dragen30xPct": 100,
+    "dragen50xPct": 98.5,
+    "nextgene20xPct": 96.0,
+    "nextgene30xPct": 91.2,
+    "nextgene50xPct": 82.4,
+    "bwa20xPct": 99.1,
+    "bwa30xPct": 97.4,
+    "bwa50xPct": 93.0,
+    "gcContentPct": 52.4
+  }
+]

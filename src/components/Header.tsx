@@ -30,8 +30,8 @@ export const Header: React.FC<HeaderProps> = ({
                 <h1 className="font-bold text-lg tracking-tight text-slate-100">
                   NGS Alignment Benchmark Suite
                 </h1>
-                <span className="bg-sky-500/10 text-sky-400 border border-sky-500/20 text-xs px-2 py-0.5 rounded-full font-medium">
-                  Peer-Review Grade
+                <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 text-xs px-2.5 py-0.5 rounded-full font-bold">
+                  Auteurs : Coquerelle M. & Cabello-Aguilar S.
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-mono truncate max-w-md">

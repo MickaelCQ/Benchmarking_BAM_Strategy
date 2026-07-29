@@ -122,10 +122,10 @@ export const VariantLossCalculator: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2">
             <span className="bg-sky-500/20 text-sky-300 border border-sky-400/30 text-[11px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center space-x-1">
               <BookOpen className="w-3.5 h-3.5" />
-              <span>Modèle Probabiliste de Détection NGS Constitutionnel — Cabello-Aguilar et al. (Diseases 2025)</span>
+              <span>Conception & Développement : Coquerelle M. & Cabello-Aguilar S.</span>
             </span>
             <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 text-[11px] px-2.5 py-0.5 rounded-full font-semibold">
-              Loi Binomiale B(D, VAF)
+              Modèle Probabiliste B(D_dedup, VAF) — Diseases 2025
             </span>
           </div>
 

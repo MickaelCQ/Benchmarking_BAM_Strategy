@@ -14,7 +14,7 @@ import {
   Scatter,
   ReferenceLine,
 } from "recharts";
-import { BarChart3, Stethoscope, Calculator, Cpu, Filter } from "lucide-react";
+import { BarChart3, Stethoscope, Calculator, Cpu, Filter, BookOpen } from "lucide-react";
 
 interface MetricsDashboardProps {
   selectedSample: string;
@@ -196,6 +196,91 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ selectedSamp
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          {/* Encadré de Note Technique Bioinformatique */}
+          <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-slate-100 p-5 rounded-xl border border-slate-700 shadow-md space-y-4">
+            <div className="flex items-center space-x-2.5 border-b border-slate-700/80 pb-3">
+              <div className="h-8 w-8 rounded-lg bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300">
+                <BookOpen className="h-4 w-4" />
+              </div>
+              <div>
+                <h4 className="font-bold text-xs text-indigo-200 uppercase tracking-wider">
+                  Encadré Technique : Interprétation Bioinformatique des Métriques
+                </h4>
+                <p className="text-[11px] text-slate-400">
+                  Définitions synthétiques et origines biologiques/séquençage des indicateurs d'alignement.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 text-xs">
+              {/* 1. Mapped Reads */}
+              <div className="bg-slate-800/80 p-3 rounded-lg border border-slate-700/70 space-y-1">
+                <div className="font-bold text-sky-400 flex items-center space-x-1.5">
+                  <span className="w-2 h-2 rounded-full bg-sky-400"></span>
+                  <span>Mapped Reads (%)</span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed">
+                  <strong className="text-slate-200">Origine :</strong> Proportion des lectures brutes (FASTQ) alignées avec succès sur le génome de référence (GRCh38). Reflète la qualité globale de la banque d'ADN et le rendement du mappage.
+                </p>
+              </div>
+
+              {/* 2. Duplicate Rate */}
+              <div className="bg-slate-800/80 p-3 rounded-lg border border-slate-700/70 space-y-1">
+                <div className="font-bold text-rose-400 flex items-center space-x-1.5">
+                  <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+                  <span>Duplicate Rate (%)</span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed">
+                  <strong className="text-slate-200">Origine :</strong> Lectures strictement identiques créées par sur-amplification PCR lors de la préparation de banque ou duplicats optiques sur la flowcell. Un taux élevé réduit la profondeur utile.
+                </p>
+              </div>
+
+              {/* 3. MAPQ 60 */}
+              <div className="bg-slate-800/80 p-3 rounded-lg border border-slate-700/70 space-y-1">
+                <div className="font-bold text-emerald-400 flex items-center space-x-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  <span>MAPQ 60 (%)</span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed">
+                  <strong className="text-slate-200">Signification :</strong> Proportion de reads avec un score Phred <code className="font-mono bg-slate-900 px-1 rounded text-emerald-300">Q=60</code> (Probabilité d'erreur P = 10⁻⁶), garantissant un alignement unique et non ambigu à une position génomique exacte.
+                </p>
+              </div>
+
+              {/* 4. Soft-Clipped Reads */}
+              <div className="bg-slate-800/80 p-3 rounded-lg border border-slate-700/70 space-y-1">
+                <div className="font-bold text-amber-400 flex items-center space-x-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                  <span>Soft-Clipped Reads (%)</span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed">
+                  <strong className="text-slate-200">Biologie :</strong> Reads partiellement alignés dont les extrémités non concordantes sont masquées ("clippées"). Signale biologiquement des réarrangements, variants structuraux (SV), indels complexes ou adaptateurs.
+                </p>
+              </div>
+
+              {/* 5. Off-Target Rate */}
+              <div className="bg-slate-800/80 p-3 rounded-lg border border-slate-700/70 space-y-1">
+                <div className="font-bold text-purple-400 flex items-center space-x-1.5">
+                  <span className="w-2 h-2 rounded-full bg-purple-400"></span>
+                  <span>Off-Target Rate (%)</span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed">
+                  <strong className="text-slate-200">Origine :</strong> Proportion de lectures séquencées en dehors des zones cibles définies par le panel BED. Évalue la spécificité d'hybridation des sondes de capture.
+                </p>
+              </div>
+
+              {/* 6. Mismatch Rate */}
+              <div className="bg-slate-800/80 p-3 rounded-lg border border-slate-700/70 space-y-1">
+                <div className="font-bold text-cyan-400 flex items-center space-x-1.5">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+                  <span>Mismatch Rate (%)</span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed">
+                  <strong className="text-slate-200">Signification :</strong> Fréquence des désaccords nucléotidique par rapport au génome de référence. Combine le taux d'erreur du séquenceur et les vrais variants génétiques (SNVs).
+                </p>
+              </div>
             </div>
           </div>
         </div>

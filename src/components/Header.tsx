@@ -1,5 +1,5 @@
 import React from "react";
-import { Dna, FileText, Download, Code, Sparkles, Terminal, Cpu, FileSpreadsheet } from "lucide-react";
+import { Dna, FileText, Download, Code, Sparkles, Terminal, Cpu, FileSpreadsheet, Activity } from "lucide-react";
 
 interface HeaderProps {
   activeTab: string;
@@ -86,6 +86,8 @@ export const Header: React.FC<HeaderProps> = ({
             { id: "overview", label: "Study Overview", icon: Dna },
             { id: "dashboard", label: "Multi-Dimensional Metrics", icon: Cpu },
             { id: "gene-coverage", label: "Gene / BED Region Coverage", icon: FileSpreadsheet },
+            { id: "gene-region-coverage", label: "Gene Region Coverage", icon: Dna },
+            { id: "variant-loss-prob", label: "Probabilité de Perte de Variant", icon: Activity },
             { id: "r-scripts", label: "R Publication Figures", icon: Code },
             { id: "latex", label: "LaTeX Journal Paper", icon: FileText },
             { id: "cli", label: "Cluster Bash Pipeline", icon: Terminal },

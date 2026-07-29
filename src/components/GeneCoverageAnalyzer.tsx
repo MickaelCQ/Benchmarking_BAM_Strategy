@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { CAPTURE_BED_GENES, GeneCoverageProfile, ExonCoverage } from "../data/geneCoverageData";
+import { calculateVariantDetectionProb } from "../utils/binomialModel";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -39,7 +40,11 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-export const GeneCoverageAnalyzer: React.FC = () => {
+interface GeneCoverageAnalyzerProps {
+  initialMode?: "exon" | "gene";
+}
+
+export const GeneCoverageAnalyzer: React.FC<GeneCoverageAnalyzerProps> = ({ initialMode = "exon" }) => {
   const [selectedGeneSymbol, setSelectedGeneSymbol] = useState<string>("COL3A1");
   const [geneSearchQuery, setGeneSearchQuery] = useState<string>("");
   const [customBedText, setCustomBedText] = useState<string>("");
@@ -53,6 +58,12 @@ export const GeneCoverageAnalyzer: React.FC = () => {
   const [depthThreshold, setDepthThreshold] = useState<number>(30); // 20x, 30x, 50x
   const [displayOrder, setDisplayOrder] = useState<"biological" | "genomic">("biological");
   const [viewMode, setViewMode] = useState<"depth" | "gc_correlation" | "table">("depth");
+  const [activeCoverageMode, setActiveCoverageMode] = useState<"exon" | "gene">(initialMode);
+
+  // Sync mode if initialMode prop changes (e.g. via top header tab click)
+  useEffect(() => {
+    setActiveCoverageMode(initialMode);
+  }, [initialMode]);
 
   // Auto-fetch bench_coverage_metrics.json if placed in /public
   useEffect(() => {
@@ -192,6 +203,59 @@ export const GeneCoverageAnalyzer: React.FC = () => {
       ? "BWA-MEM + Markdup"
       : "NextGENe";
 
+  // Compute whole-gene aggregates across all panel genes for the "Gene Region coverage" tab
+  const geneLevelAggregates = useMemo(() => {
+    return CAPTURE_BED_GENES.map((profile) => {
+      const exons = profile.exons;
+      const count = exons.length || 1;
+      const dragenMean = exons.reduce((acc, e) => acc + e.dragenDepth, 0) / count;
+      const nextgeneMean = exons.reduce((acc, e) => acc + e.nextgeneDepth, 0) / count;
+      const bwaMean = exons.reduce((acc, e) => acc + e.bwaDepth, 0) / count;
+
+      const dragenPass = exons.reduce((acc, e) => acc + getPctCovered(e, "dragen"), 0) / count;
+      const nextgenePass = exons.reduce((acc, e) => acc + getPctCovered(e, "nextgene"), 0) / count;
+      const bwaPass = exons.reduce((acc, e) => acc + getPctCovered(e, "bwa"), 0) / count;
+
+      const meanGc = exons.reduce((acc, e) => acc + e.gcContentPct, 0) / count;
+
+      const winning =
+        dragenPass >= Math.max(nextgenePass, bwaPass)
+          ? "DRAGEN v4.0"
+          : bwaPass >= nextgenePass
+          ? "BWA-MEM + Markdup"
+          : "NextGENe";
+
+      return {
+        geneSymbol: profile.geneSymbol,
+        fullName: profile.fullName,
+        diseaseAssociation: profile.diseaseAssociation,
+        chr: profile.chr,
+        strand: profile.strand,
+        totalExons: profile.totalExons,
+        totalLengthBp: profile.totalLengthBp,
+        meanGcPct: Number(meanGc.toFixed(1)),
+        dragenDepth: Number(dragenMean.toFixed(1)),
+        nextgeneDepth: Number(nextgeneMean.toFixed(1)),
+        bwaDepth: Number(bwaMean.toFixed(1)),
+        dragenPassPct: Number(dragenPass.toFixed(1)),
+        nextgenePassPct: Number(nextgenePass.toFixed(1)),
+        bwaPassPct: Number(bwaPass.toFixed(1)),
+        winningAligner: winning,
+      };
+    });
+  }, [depthThreshold]);
+
+  const filteredGeneLevelAggregates = useMemo(() => {
+    if (!geneSearchQuery.trim()) return geneLevelAggregates;
+    const q = geneSearchQuery.toLowerCase();
+    return geneLevelAggregates.filter(
+      (g) =>
+        g.geneSymbol.toLowerCase().includes(q) ||
+        g.fullName.toLowerCase().includes(q) ||
+        g.diseaseAssociation.toLowerCase().includes(q)
+    );
+  }, [geneLevelAggregates, geneSearchQuery]);
+
   // Parse custom BED File Text
   const handleParseBed = () => {
     if (!customBedText.trim()) {
@@ -203,6 +267,7 @@ export const GeneCoverageAnalyzer: React.FC = () => {
     try {
       const lines = customBedText.trim().split("\n");
       const exons: ExonCoverage[] = [];
+      const geneCounters: Record<string, number> = {};
 
       lines.forEach((line, idx) => {
         if (line.startsWith("#") || line.startsWith("track") || !line.trim()) return;
@@ -211,8 +276,11 @@ export const GeneCoverageAnalyzer: React.FC = () => {
           const chr = parts[0];
           const start = parseInt(parts[1], 10);
           const end = parseInt(parts[2], 10);
-          const geneOrExon = parts[3] || `Target_${idx + 1}`;
+          const geneSymbol = parts[3] || `Target_${idx + 1}`;
           const len = Math.max(1, end - start);
+
+          geneCounters[geneSymbol] = (geneCounters[geneSymbol] || 0) + 1;
+          const exonNum = geneCounters[geneSymbol];
 
           const isGc = idx === 0 || len < 150;
           const baseDepth = 125 + Math.floor(Math.sin(idx) * 25);
@@ -221,8 +289,8 @@ export const GeneCoverageAnalyzer: React.FC = () => {
           const nextgeneD = isGc ? baseDepth * 0.52 : baseDepth * 0.88;
 
           exons.push({
-            exonId: `Exon ${idx + 1} (${geneOrExon})`,
-            exonNumber: idx + 1,
+            exonId: `Exon ${exonNum} (${geneSymbol})`,
+            exonNumber: exonNum,
             chr,
             start,
             end,
@@ -407,8 +475,392 @@ ggplot(df, aes(x = factor(start), y = depth, fill = Aligner)) +
 
   return (
     <div className="space-y-6">
-      {/* Pedagogical Header Explanation Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl shadow-xl border border-indigo-800/50 space-y-4">
+      {/* Coverage Resolution Mode Navigation Bar (2 Main Tabs) */}
+      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setActiveCoverageMode("exon")}
+            className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+              activeCoverageMode === "exon"
+                ? "bg-slate-900 text-sky-400 shadow-md ring-2 ring-sky-400/20"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+            }`}
+          >
+            <Layers className="h-4 w-4 text-sky-400" />
+            <span>Gene / BED Region Coverage (Résolution Exonique)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveCoverageMode("gene")}
+            className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+              activeCoverageMode === "gene"
+                ? "bg-slate-900 text-indigo-400 shadow-md ring-2 ring-indigo-400/20"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+            }`}
+          >
+            <Dna className="h-4 w-4 text-indigo-400" />
+            <span>Gene Region Coverage (Échelle Globale du Gène)</span>
+          </button>
+        </div>
+
+        <div className="flex items-center space-x-2 text-xs text-slate-500 font-medium">
+          <Info className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+          <span>
+            {activeCoverageMode === "exon"
+              ? "Résolution fine : analyse individuelle exon par exon pour le gène sélectionné"
+              : "Résolution synthétique : métriques agrégées à l'échelle du gène entier"}
+          </span>
+        </div>
+      </div>
+
+      {activeCoverageMode === "gene" && (
+        <div className="space-y-6">
+          {/* Gene Scale Overview Banner */}
+          <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-900 text-white p-5 rounded-2xl border border-indigo-800 shadow-md space-y-3">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="flex items-center space-x-3">
+                <div className="h-10 w-10 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center shrink-0 text-indigo-300">
+                  <Dna className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-indigo-200">
+                    Vue Synthétique à l'Échelle du Gène Entier ({filteredGeneLevelAggregates.length} Gènes du Panel)
+                  </h3>
+                  <p className="text-xs text-slate-300">
+                    Facilite l'interprétation en résumant chaque gène globalement, avec sélecteur dynamique par gène et métriques d'alignement.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Search Bar */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-2 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={geneSearchQuery}
+                    onChange={(e) => setGeneSearchQuery(e.target.value)}
+                    placeholder="Filtrer un gène (ex: COL3A1)..."
+                    className="bg-slate-800/90 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-400 outline-none focus:border-indigo-400"
+                  />
+                </div>
+
+                {/* Threshold Selector */}
+                <select
+                  value={depthThreshold}
+                  onChange={(e) => setDepthThreshold(Number(e.target.value))}
+                  className="bg-slate-800 border border-slate-700 text-xs rounded-lg px-2.5 py-1.5 font-semibold text-indigo-200 outline-none"
+                >
+                  <option value={20}>Seuil ≥ 20x (Standard WES)</option>
+                  <option value={30}>Seuil ≥ 30x (ACMG Diagnostique)</option>
+                  <option value={50}>Seuil ≥ 50x (Haute Sensibilité)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Gene Selector Toolbar for Gene Region Coverage */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div className="flex items-center space-x-2 text-slate-800 font-bold text-xs">
+                <Filter className="h-4 w-4 text-indigo-600" />
+                <span>Sélecteur de Gène du Panel de Capture ({filteredGenes.length} gènes disponibles)</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="text-xs text-slate-500 font-medium">Sélection rapide :</span>
+                <select
+                  value={selectedGeneSymbol}
+                  onChange={(e) => setSelectedGeneSymbol(e.target.value)}
+                  className="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1 text-xs font-bold text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {CAPTURE_BED_GENES.map((g) => (
+                    <option key={g.geneSymbol} value={g.geneSymbol}>
+                      {g.geneSymbol} — {g.fullName} ({g.totalExons} exons)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Quick Gene Chips */}
+            <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1 bg-slate-50/80 rounded-lg border border-slate-200/80">
+              {filteredGenes.map((g) => (
+                <button
+                  key={g.geneSymbol}
+                  onClick={() => setSelectedGeneSymbol(g.geneSymbol)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all flex items-center space-x-1 ${
+                    selectedGeneSymbol === g.geneSymbol
+                      ? "bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-300"
+                      : "bg-white text-slate-700 hover:bg-indigo-50 border border-slate-200"
+                  }`}
+                >
+                  <span>{g.geneSymbol}</span>
+                  <span className="text-[10px] opacity-70">({g.totalExons}ex)</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Focus Card for Currently Selected Gene */}
+          {(() => {
+            const selectedAgg = geneLevelAggregates.find((g) => g.geneSymbol === selectedGeneSymbol);
+            if (!selectedAgg) return null;
+            return (
+              <div className="bg-white p-5 rounded-xl border border-indigo-200 shadow-sm bg-gradient-to-r from-indigo-50/40 via-white to-sky-50/40 grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+                <div className="md:col-span-1 border-r border-indigo-100 pr-4 space-y-1">
+                  <div className="flex items-center space-x-2 text-indigo-600">
+                    <Trophy className="h-4 w-4" />
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Gène Actif : {selectedAgg.geneSymbol}
+                    </span>
+                  </div>
+                  <div className="text-base font-extrabold text-slate-900">{selectedAgg.fullName}</div>
+                  <div className="text-xs text-slate-600 space-y-0.5">
+                    <div>
+                      Coordonnées : <strong className="font-mono text-slate-800">{selectedAgg.chr} ({selectedAgg.strand})</strong>
+                    </div>
+                    <div>
+                      Taille & Exons : <strong>{selectedAgg.totalLengthBp.toLocaleString()} bp</strong> ({selectedAgg.totalExons} exons) | GC: <strong>{selectedAgg.meanGcPct}%</strong>
+                    </div>
+                    <div>
+                      Meilleur Aligneur : <strong className="text-indigo-700 font-bold">{selectedAgg.winningAligner}</strong>
+                    </div>
+                  </div>
+                  <div className="pt-2">
+                    <button
+                      onClick={() => {
+                        setParsedCustomExons(null);
+                        setActiveCoverageMode("exon");
+                      }}
+                      className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition-all shadow-sm flex items-center space-x-1.5"
+                    >
+                      <Layers className="h-3.5 w-3.5" />
+                      <span>Examiner Exons de {selectedAgg.geneSymbol} 🔍</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* DRAGEN Metrics */}
+                <div className="p-3.5 rounded-xl bg-sky-50 border border-sky-200 text-xs space-y-1">
+                  <div className="font-bold text-sky-900 flex items-center justify-between">
+                    <span>DRAGEN v4.0</span>
+                    <span className="bg-sky-200 text-sky-900 text-[10px] px-1.5 py-0.5 rounded font-mono font-bold">
+                      {selectedAgg.dragenDepth}x moy
+                    </span>
+                  </div>
+                  <div className="text-slate-700 font-semibold">
+                    Couverture ≥ {depthThreshold}x : <span className="text-sky-700 font-bold">{selectedAgg.dragenPassPct}%</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    Accélération matérielle & réalignement GPU
+                  </div>
+                </div>
+
+                {/* NextGENe Metrics */}
+                <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs space-y-1">
+                  <div className="font-bold text-emerald-900 flex items-center justify-between">
+                    <span>NextGENe v2.4</span>
+                    <span className="bg-emerald-200 text-emerald-900 text-[10px] px-1.5 py-0.5 rounded font-mono font-bold">
+                      {selectedAgg.nextgeneDepth}x moy
+                    </span>
+                  </div>
+                  <div className="text-slate-700 font-semibold">
+                    Couverture ≥ {depthThreshold}x : <span className={`font-bold ${selectedAgg.nextgenePassPct < 85 ? "text-rose-600" : "text-emerald-700"}`}>{selectedAgg.nextgenePassPct}%</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    K-mer matching (Chute de couverture sur GC%)
+                  </div>
+                </div>
+
+                {/* BWA Metrics */}
+                <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs space-y-1">
+                  <div className="font-bold text-amber-900 flex items-center justify-between">
+                    <span>BWA-MEM + Markdup</span>
+                    <span className="bg-amber-200 text-amber-900 text-[10px] px-1.5 py-0.5 rounded font-mono font-bold">
+                      {selectedAgg.bwaDepth}x moy
+                    </span>
+                  </div>
+                  <div className="text-slate-700 font-semibold">
+                    Couverture ≥ {depthThreshold}x : <span className="text-amber-800 font-bold">{selectedAgg.bwaPassPct}%</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    Standard GATK (Perte modérée sur GC-rich)
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Gene-Level Bar Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Chart 1: Mean Whole-Gene Depth */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center space-x-2">
+                  <Dna className="h-4 w-4 text-indigo-600" />
+                  <span>Profondeur Moyenne du Gène Entier (Depth in X)</span>
+                </h3>
+                <span className="text-[11px] text-slate-500 font-mono">
+                  Moyenne globale par gène
+                </span>
+              </div>
+
+              <div className="h-[340px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={filteredGeneLevelAggregates} margin={{ top: 10, right: 10, left: -20, bottom: 40 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis
+                      dataKey="geneSymbol"
+                      tick={{ fontSize: 10, fill: "#334155", fontWeight: "bold" }}
+                      interval={0}
+                      angle={-45}
+                      textAnchor="end"
+                    />
+                    <YAxis tick={{ fontSize: 10, fill: "#64748b" }} domain={[0, "auto"]} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#0f172a", borderRadius: "8px", border: "none" }}
+                      labelStyle={{ color: "#f8fafc", fontWeight: "bold", fontSize: "12px" }}
+                      itemStyle={{ fontSize: "11px", color: "#e2e8f0" }}
+                      formatter={(val: any) => [`${val} x`, ""]}
+                    />
+                    <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
+                    <ReferenceLine y={30} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "30x Target", fill: "#ef4444", fontSize: 10 }} />
+                    <Bar dataKey="dragenDepth" name="DRAGEN v4.0" fill="#0284c7" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="bwaDepth" name="BWA-MEM + Markdup" fill="#d97706" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="nextgeneDepth" name="NextGENe" fill="#059669" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Chart 2: Whole-Gene Percentage Coverage >= Threshold */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center space-x-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  <span>% du Gène Entier Couvert (≥ {depthThreshold}x)</span>
+                </h3>
+                <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+                  Seuil Clinique {depthThreshold}X
+                </span>
+              </div>
+
+              <div className="h-[340px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={filteredGeneLevelAggregates} margin={{ top: 10, right: 10, left: -20, bottom: 40 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis
+                      dataKey="geneSymbol"
+                      tick={{ fontSize: 10, fill: "#334155", fontWeight: "bold" }}
+                      interval={0}
+                      angle={-45}
+                      textAnchor="end"
+                    />
+                    <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: "#64748b" }} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#0f172a", borderRadius: "8px", border: "none" }}
+                      labelStyle={{ color: "#f8fafc", fontWeight: "bold", fontSize: "12px" }}
+                      itemStyle={{ fontSize: "11px", color: "#e2e8f0" }}
+                      formatter={(val: any) => [`${val}%`, ""]}
+                    />
+                    <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
+                    <ReferenceLine y={98} stroke="#10b981" strokeDasharray="3 3" label={{ value: "98% Target", fill: "#10b981", fontSize: 10 }} />
+                    <Bar dataKey="dragenPassPct" name="DRAGEN v4.0" fill="#0284c7" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="bwaPassPct" name="BWA-MEM + Markdup" fill="#d97706" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="nextgenePassPct" name="NextGENe" fill="#059669" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          {/* Whole-Gene Summary Table */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-slate-900 text-white px-5 py-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="font-bold text-xs uppercase tracking-wider flex items-center space-x-2">
+                <Dna className="h-4 w-4 text-indigo-400" />
+                <span>
+                  Tableau de Couverture à l'Échelle du Gène Entier ({filteredGeneLevelAggregates.length} Gènes)
+                </span>
+              </div>
+              <span className="text-xs text-slate-400">
+                Seuil actif : <strong className="text-emerald-400">≥ {depthThreshold}x</strong>
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-100 text-slate-700 font-semibold uppercase tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th className="py-2.5 px-4">Gène & Nom</th>
+                    <th className="py-2.5 px-3">Chr / Brin</th>
+                    <th className="py-2.5 px-3 text-center">Exons</th>
+                    <th className="py-2.5 px-3 font-mono">Taille Total</th>
+                    <th className="py-2.5 px-3">% GC Moy.</th>
+                    <th className="py-2.5 px-3 text-sky-800 bg-sky-50/70">DRAGEN Moy.</th>
+                    <th className="py-2.5 px-3 text-sky-800 bg-sky-50/70">DRAGEN ≥ {depthThreshold}x</th>
+                    <th className="py-2.5 px-3 text-emerald-800 bg-emerald-50/70">NextGENe Moy.</th>
+                    <th className="py-2.5 px-3 text-emerald-800 bg-emerald-50/70">NextGENe ≥ {depthThreshold}x</th>
+                    <th className="py-2.5 px-3 text-amber-800 bg-amber-50/70">BWA-MEM Moy.</th>
+                    <th className="py-2.5 px-3 text-amber-800 bg-amber-50/70">BWA-MEM ≥ {depthThreshold}x</th>
+                    <th className="py-2.5 px-3">Gagnant</th>
+                    <th className="py-2.5 px-3 text-center">Action Exons</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {filteredGeneLevelAggregates.map((g) => (
+                    <tr key={g.geneSymbol} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-2.5 px-4 font-bold text-slate-900">
+                        <div className="text-slate-900 font-extrabold text-xs">{g.geneSymbol}</div>
+                        <div className="text-[10px] text-slate-500 font-normal">{g.fullName}</div>
+                      </td>
+                      <td className="py-2.5 px-3 font-mono text-slate-600 text-[11px]">
+                        {g.chr} ({g.strand})
+                      </td>
+                      <td className="py-2.5 px-3 text-center font-bold text-slate-800">{g.totalExons}</td>
+                      <td className="py-2.5 px-3 font-mono text-slate-700">{g.totalLengthBp.toLocaleString()} bp</td>
+                      <td className="py-2.5 px-3 font-medium">
+                        <span className={g.meanGcPct >= 60 ? "text-rose-600 font-bold" : "text-slate-700"}>
+                          {g.meanGcPct}%
+                        </span>
+                      </td>
+                      {/* DRAGEN */}
+                      <td className="py-2.5 px-3 font-bold text-sky-700 bg-sky-50/30">{g.dragenDepth}x</td>
+                      <td className="py-2.5 px-3 font-semibold text-sky-800 bg-sky-50/30">{g.dragenPassPct}%</td>
+                      {/* NextGENe */}
+                      <td className="py-2.5 px-3 font-bold text-emerald-700 bg-emerald-50/30">{g.nextgeneDepth}x</td>
+                      <td className={`py-2.5 px-3 font-semibold bg-emerald-50/30 ${g.nextgenePassPct < 85 ? "text-rose-600 font-bold" : "text-emerald-800"}`}>
+                        {g.nextgenePassPct}%
+                      </td>
+                      {/* BWA */}
+                      <td className="py-2.5 px-3 font-bold text-amber-700 bg-amber-50/30">{g.bwaDepth}x</td>
+                      <td className="py-2.5 px-3 font-semibold text-amber-800 bg-amber-50/30">{g.bwaPassPct}%</td>
+                      <td className="py-2.5 px-3 font-bold text-indigo-700">{g.winningAligner}</td>
+                      <td className="py-2.5 px-3 text-center">
+                        <button
+                          onClick={() => {
+                            setSelectedGeneSymbol(g.geneSymbol);
+                            setParsedCustomExons(null);
+                            setActiveCoverageMode("exon");
+                          }}
+                          className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[11px] font-bold px-2.5 py-1 rounded-md transition-all shadow-2xs"
+                        >
+                          Exons 🔍
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeCoverageMode === "exon" && (
+        <div className="space-y-6">
+          {/* Pedagogical Header Explanation Banner */}
+          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl shadow-xl border border-indigo-800/50 space-y-4">
         <div className="flex items-start space-x-3">
           <div className="h-10 w-10 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center shrink-0 text-indigo-300">
             <HelpCircle className="h-6 w-6" />
@@ -418,7 +870,7 @@ ggplot(df, aes(x = factor(start), y = depth, fill = Aligner)) +
               Analyse de Couverture par Position & Exon — Panel de Capture Diagnostic ({CAPTURE_BED_GENES.length} Gènes)
             </h2>
             <p className="text-xs text-slate-300 leading-relaxed">
-              Prise en compte des spécificités génomiques : orientation du brin (Brin + vs Brin -), numérotation biologique des exons (5' $\rightarrow$ 3'), et sensibilité aux régions riches en GC.
+              Prise en compte des spécificités génomiques : orientation du brin (Brin + vs Brin -), numérotation biologique des exons (5' → 3'), et sensibilité aux régions riches en GC.
             </p>
           </div>
         </div>
@@ -473,7 +925,7 @@ ggplot(df, aes(x = factor(start), y = depth, fill = Aligner)) +
                 }`}
                 title="Ordre biologique de transcription 5' vers 3'"
               >
-                Ordre Biologique (5' $\rightarrow$ 3')
+                Ordre Biologique (5' → 3')
               </button>
               <button
                 onClick={() => setDisplayOrder("genomic")}
@@ -636,7 +1088,7 @@ ggplot(df, aes(x = factor(start), y = depth, fill = Aligner)) +
             </span>
           </div>
           <div className="text-slate-700 font-semibold">
-            Couverture $\ge {depthThreshold}\times$ : <span className="text-sky-700 font-bold">{dragenPctPass.toFixed(1)}%</span>
+            Couverture ≥ {depthThreshold}x : <span className="text-sky-700 font-bold">{dragenPctPass.toFixed(1)}%</span>
           </div>
           <div className="text-[11px] text-slate-500">
             Réalignement matériel GPU : <span className="font-bold text-emerald-700">99.8% couverture</span>
@@ -652,7 +1104,7 @@ ggplot(df, aes(x = factor(start), y = depth, fill = Aligner)) +
             </span>
           </div>
           <div className="text-slate-700 font-semibold">
-            Couverture $\ge {depthThreshold}\times$ : <span className="text-emerald-700 font-bold">{nextgenePctPass.toFixed(1)}%</span>
+            Couverture ≥ {depthThreshold}x : <span className="text-emerald-700 font-bold">{nextgenePctPass.toFixed(1)}%</span>
           </div>
           <div className="text-[11px] text-slate-500">
             K-mer hashing : <span className="font-bold text-rose-600">Sensible aux régions GC</span>
@@ -668,7 +1120,7 @@ ggplot(df, aes(x = factor(start), y = depth, fill = Aligner)) +
             </span>
           </div>
           <div className="text-slate-700 font-semibold">
-            Couverture $\ge {depthThreshold}\times$ : <span className="text-amber-800 font-bold">{bwaPctPass.toFixed(1)}%</span>
+            Couverture ≥ {depthThreshold}x : <span className="text-amber-800 font-bold">{bwaPctPass.toFixed(1)}%</span>
           </div>
           <div className="text-[11px] text-slate-500">
             Standard GATK : <span className="font-bold text-amber-700">Régulier, perte modérée GC</span>
@@ -723,7 +1175,7 @@ ggplot(df, aes(x = factor(start), y = depth, fill = Aligner)) +
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
             <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center space-x-2">
               <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              <span>Pourcentage de Bases Couvertes ($\ge {depthThreshold}\times$)</span>
+              <span>Pourcentage de Bases Couvertes (≥ {depthThreshold}x)</span>
             </h3>
             <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
               Seuil Clinique {depthThreshold}X
@@ -793,48 +1245,59 @@ ggplot(df, aes(x = factor(start), y = depth, fill = Aligner)) +
                 <th className="py-2.5 px-3">Taille (bp)</th>
                 <th className="py-2.5 px-3">% GC</th>
                 <th className="py-2.5 px-3 text-sky-800 bg-sky-50/70">DRAGEN Moy.</th>
-                <th className="py-2.5 px-3 text-sky-800 bg-sky-50/70">DRAGEN $\ge 30\times$</th>
+                <th className="py-2.5 px-3 text-sky-800 bg-sky-50/70">DRAGEN Perte (20% VAF)</th>
                 <th className="py-2.5 px-3 text-emerald-800 bg-emerald-50/70">NextGENe Moy.</th>
-                <th className="py-2.5 px-3 text-emerald-800 bg-emerald-50/70">NextGENe $\ge 30\times$</th>
+                <th className="py-2.5 px-3 text-emerald-800 bg-emerald-50/70">NextGENe Perte (20% VAF)</th>
                 <th className="py-2.5 px-3 text-amber-800 bg-amber-50/70">BWA-MEM Moy.</th>
-                <th className="py-2.5 px-3 text-amber-800 bg-amber-50/70">BWA-MEM $\ge 30\times$</th>
+                <th className="py-2.5 px-3 text-amber-800 bg-amber-50/70">BWA Perte (20% VAF)</th>
                 <th className="py-2.5 px-3">Remarques Diagnostic</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {activeExons.map((exon, idx) => (
-                <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                  <td className="py-2.5 px-4 font-bold text-slate-900 flex items-center space-x-2">
-                    <span>{exon.exonId}</span>
-                    {exon.isGcRich && (
-                      <span className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded font-medium border border-amber-300">
-                        High-GC
+              {activeExons.map((exon, idx) => {
+                const dragenLoss = (calculateVariantDetectionProb(exon.dragenDepth, 0.20, 3).pLoss * 100).toFixed(2);
+                const nextgeneLossNum = calculateVariantDetectionProb(exon.nextgeneDepth, 0.20, 3).pLoss * 100;
+                const nextgeneLoss = nextgeneLossNum.toFixed(2);
+                const bwaLoss = (calculateVariantDetectionProb(exon.bwaDepth, 0.20, 3).pLoss * 100).toFixed(2);
+
+                return (
+                  <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-2.5 px-4 font-bold text-slate-900 flex items-center space-x-2">
+                      <span>{exon.exonId}</span>
+                      {exon.isGcRich && (
+                        <span className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded font-medium border border-amber-300">
+                          High-GC
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-slate-600 text-[11px]">
+                      {exon.chr}:{exon.start.toLocaleString()}-{exon.end.toLocaleString()}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-slate-700">{exon.lengthBp} bp</td>
+                    <td className="py-2.5 px-3 font-medium">
+                      <span className={exon.gcContentPct >= 65 ? "text-rose-600 font-bold" : "text-slate-700"}>
+                        {exon.gcContentPct}%
                       </span>
-                    )}
-                  </td>
-                  <td className="py-2.5 px-3 font-mono text-slate-600 text-[11px]">
-                    {exon.chr}:{exon.start.toLocaleString()}-{exon.end.toLocaleString()}
-                  </td>
-                  <td className="py-2.5 px-3 font-mono text-slate-700">{exon.lengthBp} bp</td>
-                  <td className="py-2.5 px-3 font-medium">
-                    <span className={exon.gcContentPct >= 65 ? "text-rose-600 font-bold" : "text-slate-700"}>
-                      {exon.gcContentPct}%
-                    </span>
-                  </td>
-                  {/* DRAGEN */}
-                  <td className="py-2.5 px-3 font-bold text-sky-700 bg-sky-50/30">{exon.dragenDepth}x</td>
-                  <td className="py-2.5 px-3 font-semibold text-sky-800 bg-sky-50/30">{exon.dragen30xPct}%</td>
-                  {/* NextGENe */}
-                  <td className="py-2.5 px-3 font-bold text-emerald-700 bg-emerald-50/30">{exon.nextgeneDepth}x</td>
-                  <td className={`py-2.5 px-3 font-semibold bg-emerald-50/30 ${exon.nextgene30xPct < 85 ? "text-rose-600 font-bold" : "text-emerald-800"}`}>
-                    {exon.nextgene30xPct}%
-                  </td>
-                  {/* BWA */}
-                  <td className="py-2.5 px-3 font-bold text-amber-700 bg-amber-50/30">{exon.bwaDepth}x</td>
-                  <td className="py-2.5 px-3 font-semibold text-amber-800 bg-amber-50/30">{exon.bwa30xPct}%</td>
-                  <td className="py-2.5 px-3 text-slate-500 text-[11px]">{exon.notes || "Standard exon coverage"}</td>
-                </tr>
-              ))}
+                    </td>
+                    {/* DRAGEN */}
+                    <td className="py-2.5 px-3 font-bold text-sky-700 bg-sky-50/30">{exon.dragenDepth}x</td>
+                    <td className="py-2.5 px-3 font-semibold text-sky-800 bg-sky-50/30">
+                      {parseFloat(dragenLoss) < 0.01 ? "< 0.01%" : `${dragenLoss}%`}
+                    </td>
+                    {/* NextGENe */}
+                    <td className="py-2.5 px-3 font-bold text-emerald-700 bg-emerald-50/30">{exon.nextgeneDepth}x</td>
+                    <td className={`py-2.5 px-3 font-semibold bg-emerald-50/30 ${nextgeneLossNum > 1.0 ? "text-rose-600 font-bold" : "text-emerald-800"}`}>
+                      {parseFloat(nextgeneLoss) < 0.01 ? "< 0.01%" : `${nextgeneLoss}%`}
+                    </td>
+                    {/* BWA */}
+                    <td className="py-2.5 px-3 font-bold text-amber-700 bg-amber-50/30">{exon.bwaDepth}x</td>
+                    <td className="py-2.5 px-3 font-semibold text-amber-800 bg-amber-50/30">
+                      {parseFloat(bwaLoss) < 0.01 ? "< 0.01%" : `${bwaLoss}%`}
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-500 text-[11px]">{exon.notes || "Standard exon coverage"}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -914,6 +1377,8 @@ ggplot(df, aes(x = factor(start), y = depth, fill = Aligner)) +
           </pre>
         </div>
       </div>
+      </div>
+      )}
     </div>
   );
 };

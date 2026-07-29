@@ -3,6 +3,7 @@ import { Header } from "./components/Header";
 import { OverviewSection } from "./components/OverviewSection";
 import { MetricsDashboard } from "./components/MetricsDashboard";
 import { GeneCoverageAnalyzer } from "./components/GeneCoverageAnalyzer";
+import { CtDnaLodCalculator } from "./components/CtDnaLodCalculator";
 import { RScriptGenerator } from "./components/RScriptGenerator";
 import { LaTeXReportGenerator } from "./components/LaTeXReportGenerator";
 import { CliPipelineGuide } from "./components/CliPipelineGuide";
@@ -101,7 +102,9 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === "overview" && <OverviewSection onNavigateTab={setActiveTab} />}
         {activeTab === "dashboard" && <MetricsDashboard selectedSample={selectedSample} />}
-        {activeTab === "gene-coverage" && <GeneCoverageAnalyzer />}
+        {activeTab === "gene-coverage" && <GeneCoverageAnalyzer initialMode="exon" />}
+        {activeTab === "gene-region-coverage" && <GeneCoverageAnalyzer initialMode="gene" />}
+        {(activeTab === "variant-loss-prob" || activeTab === "ctdna-lod") && <CtDnaLodCalculator />}
         {activeTab === "r-scripts" && <RScriptGenerator />}
         {activeTab === "latex" && <LaTeXReportGenerator />}
         {activeTab === "cli" && <CliPipelineGuide />}

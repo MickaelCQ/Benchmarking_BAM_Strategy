@@ -4,7 +4,7 @@
 NGS WES Alignment Benchmark Suite — JSON Converter
 ===============================================================================
 Author: Maxime Coquerelle & Bioinformatic Core Team
-Publication: Cabello-Aguilar & Coquerelle, Diseases (2025)
+Publication: Coquerelle M., Cabello-Aguilar H., Diseases (2025)
 
 This CLI script parses mosdepth outputs (.regions.bed.gz and .thresholds.bed.gz)
 for ANY number of samples and aligners, and converts them into the benchmark

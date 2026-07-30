@@ -3,7 +3,7 @@
 # NGS WES Alignment Benchmark Suite — Cluster Executable Shell Script
 # ===============================================================================
 # Author: Maxime Coquerelle
-# Publication: Cabello-Aguilar & Coquerelle, Diseases (2025)
+# Publication: Coquerelle M., Cabello-Aguilar H., Diseases (2025)
 # Cluster Working Directory: /NFS/cluster-share/home/mcoquerelle/Explorations/Bench_Alignment
 # ===============================================================================
 

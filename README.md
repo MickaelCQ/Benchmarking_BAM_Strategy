@@ -1,13 +1,13 @@
-# 🧬 NGS WES Alignment Benchmark Suite & Clinical Coverage Platform
+# NGS WES Alignment Benchmark Suite & Clinical Coverage Platform
 
-> **Publication Reference**: Cabello-Aguilar H., Coquerelle M., et al. *Benchmarking Next-Generation Whole-Exome Alignment Pipelines in Clinical Diagnostics*. **Diseases** (2025).  
+> **Publication Reference**: Coquerelle M., Cabello-Aguilar H., et al. *Benchmarking Next-Generation Whole-Exome Alignment Pipelines in Clinical Diagnostics*. **Diseases** (2025).  
 > **Target Cluster Directory**: `/NFS/cluster-share/home/mcoquerelle/Explorations/Bench_Alignment`
 
 An interactive, high-performance web application and CLI toolkit designed to evaluate, visualize, and benchmark Next-Generation Sequencing (NGS) Whole-Exome (WES) alignment engines (**DRAGEN v4.0**, **NextGENe v2.4**, **BWA-MEM + Picard**) and calculate binomial variant detection probabilities ($P(\text{Loss})$) for ctDNA and germline diagnostic panels.
 
 ---
 
-## 🚀 Step-by-Step Quick Start (Local Laptop / Linux Workstation)
+## Step-by-Step Quick Start (Local Laptop / Linux Workstation)
 
 You can clone this repository locally and run the entire suite offline on any Linux, macOS, or Windows machine in under 2 minutes.
 
@@ -22,7 +22,7 @@ You can clone this repository locally and run the entire suite offline on any Li
 ### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/ngs-wes-alignment-benchmark.git
+git clone https://github.com/MickaeCQ/ngs-wes-alignment-benchmark.git
 cd ngs-wes-alignment-benchmark
 ```
 
@@ -44,11 +44,11 @@ npm run dev
 
 The application will start on port `3000`. Open your web browser and navigate to:
 
-👉 **[http://localhost:3000](http://localhost:3000)**
+**[http://localhost:3000](http://localhost:3000)**
 
 ---
 
-## 📁 Project Architecture & Directory Structure
+## Project Architecture & Directory Structure
 
 ```
 ngs-wes-alignment-benchmark/
@@ -81,7 +81,7 @@ ngs-wes-alignment-benchmark/
 
 ---
 
-## 🎛️ Dynamic Data Import (Drag & Drop .BED and .JSON)
+## Dynamic Data Import (Drag & Drop .BED and .JSON)
 
 The application includes an **interactive Drag-and-Drop Zone** that allows you to load custom capture panels and benchmark datasets dynamically without modifying code or restart servers.
 
@@ -95,7 +95,7 @@ The application includes an **interactive Drag-and-Drop Zone** that allows you t
 
 ---
 
-## 🐍 Processing Local BAM Files with Python & Mosdepth
+## Processing Local BAM Files with Python & Mosdepth
 
 To benchmark your own BAM files locally on a workstation or HPC cluster:
 
@@ -125,7 +125,7 @@ Move `bench_coverage_metrics.json` to `public/` or drag & drop it into the web i
 
 ---
 
-## 📐 Mathematical Model: Binomial Variant Loss & LOD Probability
+## Mathematical Model: Binomial Variant Loss & LOD Probability
 
 To calculate the probability $P(\text{Loss})$ of failing to detect a somatic or germline variant at a given deduplicated depth ($D_{\text{dedup}}$) and Variant Allele Fraction ($p = \text{VAF}$):
 
@@ -140,7 +140,7 @@ Where:
 
 ---
 
-## 📜 Publication Package Export
+## Publication Package Export
 
 Click **"Export Benchmark Package"** in the top navigation bar to download:
 1. `alignment_benchmark_paper.tex`: Complete LaTeX manuscript ready for *Diseases* or *Oxford Bioinformatics* submission.
@@ -149,7 +149,7 @@ Click **"Export Benchmark Package"** in the top navigation bar to download:
 
 ---
 
-## 📄 License & Citation
+## License & Citation
 
 When using this suite in scientific publications, please cite:
-> Cabello-Aguilar H., Coquerelle M., et al. *Benchmarking Next-Generation Whole-Exome Alignment Pipelines in Clinical Diagnostics*. **Diseases** (2025).
+> Coquerelle M., Cabello-Aguilar H., et al. *Benchmarking Next-Generation Whole-Exome Alignment Pipelines in Clinical Diagnostics*. **Diseases** (2025).

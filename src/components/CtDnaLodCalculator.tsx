@@ -139,7 +139,7 @@ export const VariantLossCalculator: React.FC = () => {
 
           <div className="pt-2 flex flex-wrap items-center gap-4 text-xs text-slate-400 font-mono">
             <div>
-              • Seuil de lecture unique : <strong className="text-sky-300">n = {minReadsThreshold} reads</strong> ({minReadsThreshold === 3 ? "Haute Sensibilité" : "Seuil Standard Tissu"})
+              • Seuil de lecture unique : <strong className="text-sky-300">n = {minReadsThreshold} reads</strong> ({minReadsThreshold === 3 ? "Haute Sensibilité" : minReadsThreshold === 10 ? "Ultra-Spécifique / Profond" : "Seuil Personnalisé"})
             </div>
             <div>
               • Citation : <span className="text-slate-300 italic">Diseases 2025, 13(10), 312; doi:10.3390/diseases13100312</span>
@@ -202,7 +202,7 @@ export const VariantLossCalculator: React.FC = () => {
                   <span>3. Seuil de Confirmation (n reads)</span>
                 </div>
                 <p className="text-[11px] text-slate-600 leading-relaxed">
-                  Un variant est considéré comme <strong>détecté et validé</strong> si et seulement si $X \ge n$ (par défaut $n = 3$ lectures uniques mutées).
+                  Un variant est considéré comme <strong>détecté et validé</strong> si et seulement si $X \ge n$ (seuil actif $n = {minReadsThreshold}$ lectures uniques mutées).
                 </p>
               </div>
             </div>
@@ -332,37 +332,53 @@ export const VariantLossCalculator: React.FC = () => {
           </div>
 
           {/* Min Reads Threshold n */}
-          <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <div className="space-y-2.5 bg-slate-50 p-4 rounded-xl border border-slate-200">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700">Nombre de Reads Cibles (n) :</span>
-              <span className="bg-sky-600 text-white font-mono font-extrabold text-xs px-2 py-0.5 rounded">
-                n = {minReadsThreshold}
-              </span>
+              <div className="flex items-center space-x-1.5">
+                <span className="text-xs text-slate-500 font-bold">n =</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={minReadsThreshold}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val) && val >= 1) {
+                      setMinReadsThreshold(val);
+                    } else if (e.target.value === "") {
+                      setMinReadsThreshold(1);
+                    }
+                  }}
+                  className="w-16 bg-white border border-sky-400 font-mono font-extrabold text-xs text-sky-900 px-2 py-0.5 rounded text-center focus:ring-2 focus:ring-sky-500 focus:outline-none shadow-2xs"
+                />
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <button
-                onClick={() => setMinReadsThreshold(3)}
-                className={`py-1.5 px-3 rounded-lg text-xs font-bold border transition-all ${
-                  minReadsThreshold === 3
-                    ? "bg-sky-600 text-white border-sky-600 shadow-xs"
-                    : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
-                }`}
-              >
-                n = 3 (Haute Sensibilité)
-              </button>
-              <button
-                onClick={() => setMinReadsThreshold(5)}
-                className={`py-1.5 px-3 rounded-lg text-xs font-bold border transition-all ${
-                  minReadsThreshold === 5
-                    ? "bg-sky-600 text-white border-sky-600 shadow-xs"
-                    : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
-                }`}
-              >
-                n = 5 (Seuil Standard Tissu)
-              </button>
+
+            {/* Presets Grid including n=2, n=3, n=5, n=10 */}
+            <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+              {[
+                { n: 2, label: "n = 2 (Sensibilité Max)" },
+                { n: 3, label: "n = 3 (Haute Sensibilité)" },
+                { n: 5, label: "n = 5 (Standard Tissu)" },
+                { n: 10, label: "n = 10 (Ultra-Spécifique)" },
+              ].map((item) => (
+                <button
+                  key={item.n}
+                  onClick={() => setMinReadsThreshold(item.n)}
+                  className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border transition-all truncate ${
+                    minReadsThreshold === item.n
+                      ? "bg-sky-600 text-white border-sky-600 shadow-xs ring-1 ring-sky-300"
+                      : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
             </div>
+
             <p className="text-[11px] text-slate-500 leading-snug">
-              Nombre de lectures uniques indépendantes requises pour valider un variant.
+              Sélectionnez ou renseignez librement le nombre de lectures mutées requises.
             </p>
           </div>
 

@@ -1,6 +1,9 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { CAPTURE_BED_GENES, GeneCoverageProfile, ExonCoverage } from "../data/geneCoverageData";
 import { calculateVariantDetectionProb } from "../utils/binomialModel";
+import { ParsedBedResult } from "../utils/bedParser";
+import { DynamicAlignerMeta, getDefaultAligners } from "../utils/dynamicAligners";
+import { FileDropZone } from "./FileDropZone";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -52,6 +55,13 @@ export const GeneCoverageAnalyzer: React.FC<GeneCoverageAnalyzerProps> = ({ init
   const [customBedError, setCustomBedError] = useState<string | null>(null);
   const [uploadedJsonMessage, setUploadedJsonMessage] = useState<string | null>(null);
   const [uploadedJsonData, setUploadedJsonData] = useState<any[] | null>(null);
+
+  // Dynamic file states
+  const [activeBedFileName, setActiveBedFileName] = useState<string | null>(null);
+  const [activeJsonFileName, setActiveJsonFileName] = useState<string | null>(null);
+  const [parsedBedStats, setParsedBedStats] = useState<ParsedBedResult | null>(null);
+  const [detectedAligners, setDetectedAligners] = useState<DynamicAlignerMeta[]>(getDefaultAligners());
+
   const [copiedBash, setCopiedBash] = useState(false);
   const [copiedPy, setCopiedPy] = useState(false);
   const [copiedR, setCopiedR] = useState(false);
@@ -64,6 +74,63 @@ export const GeneCoverageAnalyzer: React.FC<GeneCoverageAnalyzerProps> = ({ init
   useEffect(() => {
     setActiveCoverageMode(initialMode);
   }, [initialMode]);
+
+  // Handlers for FileDropZone
+  const handleBedParsed = (result: ParsedBedResult | null, fileName: string | null) => {
+    setParsedBedStats(result);
+    setActiveBedFileName(fileName);
+    if (result && result.profiles.length > 0) {
+      setSelectedGeneSymbol(result.profiles[0].geneSymbol);
+    }
+  };
+
+  const handleJsonParsed = (data: any[] | null, aligners: DynamicAlignerMeta[], fileName: string | null) => {
+    setUploadedJsonData(data);
+    setDetectedAligners(aligners);
+    setActiveJsonFileName(fileName);
+    if (data) {
+      setUploadedJsonMessage(`✅ ${data.length} régions importées (${aligners.map(a => a.name).join(", ")})`);
+    }
+  };
+
+  const handleJsonFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        if (Array.isArray(json)) {
+          setUploadedJsonData(json);
+          setUploadedJsonMessage(`✅ ${json.length} régions importées depuis '${file.name}'`);
+        } else {
+          setCustomBedError("Le fichier JSON doit contenir un tableau d'objets (format orient='records').");
+        }
+      } catch (err) {
+        setCustomBedError("Erreur lors de la lecture du fichier JSON.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleResetToDefaults = () => {
+    setParsedBedStats(null);
+    setActiveBedFileName(null);
+    setUploadedJsonData(null);
+    setActiveJsonFileName(null);
+    setDetectedAligners(getDefaultAligners());
+    setSelectedGeneSymbol("COL3A1");
+    setUploadedJsonMessage(null);
+    setParsedCustomExons(null);
+  };
+
+  // Active profiles (custom BED profiles if provided, else default panel genes)
+  const activeProfiles = useMemo(() => {
+    return parsedBedStats && parsedBedStats.profiles.length > 0
+      ? parsedBedStats.profiles
+      : CAPTURE_BED_GENES;
+  }, [parsedBedStats]);
 
   // Auto-fetch bench_coverage_metrics.json if placed in /public
   useEffect(() => {
@@ -83,41 +150,21 @@ export const GeneCoverageAnalyzer: React.FC<GeneCoverageAnalyzerProps> = ({ init
       });
   }, []);
 
-  const handleJsonFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const json = JSON.parse(event.target?.result as string);
-        if (Array.isArray(json)) {
-          setUploadedJsonData(json);
-          setUploadedJsonMessage(`✅ ${json.length} régions importées avec succès depuis '${file.name}'`);
-        } else {
-          setCustomBedError("Le fichier JSON doit contenir un tableau d'objets (format orient='records').");
-        }
-      } catch (err) {
-        setCustomBedError("Erreur lors de la lecture du fichier JSON.");
-      }
-    };
-    reader.readAsText(file);
-  };
-
   // Filter available genes by search query
   const filteredGenes = useMemo(() => {
-    if (!geneSearchQuery.trim()) return CAPTURE_BED_GENES;
+    if (!geneSearchQuery.trim()) return activeProfiles;
     const q = geneSearchQuery.toLowerCase();
-    return CAPTURE_BED_GENES.filter(
+    return activeProfiles.filter(
       (g) =>
         g.geneSymbol.toLowerCase().includes(q) ||
         g.fullName.toLowerCase().includes(q) ||
         g.diseaseAssociation.toLowerCase().includes(q)
     );
-  }, [geneSearchQuery]);
+  }, [geneSearchQuery, activeProfiles]);
 
-  const currentProfile: GeneCoverageProfile =
-    CAPTURE_BED_GENES.find((g) => g.geneSymbol === selectedGeneSymbol) || CAPTURE_BED_GENES[0];
+  const currentProfile: GeneCoverageProfile = useMemo(() => {
+    return activeProfiles.find((g) => g.geneSymbol === selectedGeneSymbol) || activeProfiles[0];
+  }, [activeProfiles, selectedGeneSymbol]);
 
   // Convert uploaded bench_coverage_metrics.json records to ExonCoverage objects
   const realJsonExons = useMemo(() => {
@@ -205,7 +252,7 @@ export const GeneCoverageAnalyzer: React.FC<GeneCoverageAnalyzerProps> = ({ init
 
   // Compute whole-gene aggregates across all panel genes for the "Gene Region coverage" tab
   const geneLevelAggregates = useMemo(() => {
-    return CAPTURE_BED_GENES.map((profile) => {
+    return activeProfiles.map((profile) => {
       const exons = profile.exons;
       const count = exons.length || 1;
       const dragenMean = exons.reduce((acc, e) => acc + e.dragenDepth, 0) / count;
@@ -513,6 +560,17 @@ ggplot(df, aes(x = factor(start), y = depth, fill = Aligner)) +
         </div>
       </div>
 
+      {/* Drag & Drop File Importer */}
+      <FileDropZone
+        onBedParsed={handleBedParsed}
+        onJsonParsed={handleJsonParsed}
+        activeBedFileName={activeBedFileName}
+        activeJsonFileName={activeJsonFileName}
+        parsedBedStats={parsedBedStats}
+        detectedAligners={detectedAligners}
+        onResetToDefaults={handleResetToDefaults}
+      />
+
       {activeCoverageMode === "gene" && (
         <div className="space-y-6">
           {/* Gene Scale Overview Banner */}
@@ -573,7 +631,7 @@ ggplot(df, aes(x = factor(start), y = depth, fill = Aligner)) +
                   onChange={(e) => setSelectedGeneSymbol(e.target.value)}
                   className="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1 text-xs font-bold text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  {CAPTURE_BED_GENES.map((g) => (
+                  {activeProfiles.map((g) => (
                     <option key={g.geneSymbol} value={g.geneSymbol}>
                       {g.geneSymbol} — {g.fullName} ({g.totalExons} exons)
                     </option>
@@ -867,7 +925,7 @@ ggplot(df, aes(x = factor(start), y = depth, fill = Aligner)) +
           </div>
           <div className="space-y-1">
             <h2 className="text-base font-bold text-indigo-200">
-              Analyse de Couverture par Position & Exon — Panel de Capture Diagnostic ({CAPTURE_BED_GENES.length} Gènes)
+              Analyse de Couverture par Position & Exon — Panel de Capture Diagnostic ({activeProfiles.length} Gènes)
             </h2>
             <p className="text-xs text-slate-300 leading-relaxed">
               Prise en compte des spécificités génomiques : orientation du brin (Brin + vs Brin -), numérotation biologique des exons (5' → 3'), et sensibilité aux régions riches en GC.

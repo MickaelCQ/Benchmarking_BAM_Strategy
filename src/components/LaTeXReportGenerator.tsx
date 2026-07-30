@@ -6,7 +6,7 @@ import { FileText, Copy, Check, Download, Sliders, Layers } from "lucide-react";
 export const LaTeXReportGenerator: React.FC = () => {
   const [config, setConfig] = useState<LaTeXConfig>({
     title: "Benchmarking Next-Generation Whole-Exome Sequencing Alignments: DRAGEN v4.0 vs NextGENe vs BWA-MEM + Picard",
-    authors: "Maxime Coquerelle, et al.",
+    authors: "Maxime Coquerelle, S. Cabello-Aguilar, et al.",
     affiliation: "Bioinformatics Core, Cluster Share Unit (/NFS/cluster-share/home/mcoquerelle)",
     journal: "Oxford Bioinformatics",
     includeRawTables: true,

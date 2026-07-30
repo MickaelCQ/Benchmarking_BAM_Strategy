@@ -78,6 +78,19 @@ Variant concordance across callsets was evaluated using the Jaccard similarity i
 J(A, B) = \\frac{|A \\cap B|}{|A \\cup B|}
 \\end{equation}
 
+\\subsection{Binomial Variant Detection Model and Deduplication Requirements}
+To evaluate the risk of false-negative variant loss, we apply the exact binomial model $X \\sim \\mathcal{B}(D_{\\text{dedup}}, p)$ (Cabello-Aguilar \\& Coquerelle, Diseases 2025). The probability of variant loss $P(\\text{Loss})$ at target allele frequency $p = \\text{VAF}$ given a minimum confirmation threshold $n = 3$ unique mutated reads is expressed as:
+\\begin{equation}
+P(\\text{Loss}) = \\sum_{k=0}^{n-1} \\binom{D_{\\text{dedup}}}{k} p^k (1-p)^{D_{\\text{dedup}}-k}
+\\end{equation}
+\\begin{equation}
+P(\\text{Detection}) = 1 - P(\\text{Loss}) = P(X \\ge n)
+\\end{equation}
+Crucially, $D_{\\text{dedup}}$ represents the depth \\textbf{after bioinformatic deduplication} (Picard \\texttt{MarkDuplicates} or UMI collapse), ensuring PCR duplicate reads do not inflate statistical confidence. Minimum required depth $D_{\\text{min}}$ is determined for target confidence levels ($95\\%$, $99\\%$, and $99.9\\%$):
+\\begin{equation}
+D_{\\text{min}} = \\arg\\min_D \\{ P(X \\ge n \\mid D_{\\text{dedup}}, p) \\ge \\text{Confidence} \\}
+\\end{equation}
+
 \\section{Results}
 ${includeRawTables ? `
 \\subsection{Technical and Bioinformatic Quality Comparison}

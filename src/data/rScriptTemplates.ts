@@ -5,9 +5,11 @@ export function generateRPublicationScript(config: RPlotConfig): string {
 
   return `# ==============================================================================
 # HIGH-RIGOR NGS ALIGNMENT BENCHMARK SUITE - PUBLICATION GRAPHICS GENERATOR
+# Authors: Coquerelle M. & Cabello-Aguilar S.
 # Benchmark Comparison: DRAGEN v4.0 vs NextGENe v2.4 vs BWA-MEM + Picard MarkDup
 # Designed for International Peer-Reviewed Publication (${journalStyle} Style)
 # Target Directory: /NFS/cluster-share/home/mcoquerelle/Explorations/Bench_Alignment
+# Model: Binomial Variant Loss P(X >= n | D_dedup, VAF) - Diseases 2025
 # ==============================================================================
 
 # --- 1. Load Required R Libraries ---
@@ -180,12 +182,48 @@ fig3_runtime <- ggplot(df_benchmark, aes(x = Aligner, y = WallClockMinutes, fill
 ggsave("Figure3_Computational_Performance.pdf", fig3_runtime, width = ${figureWidth * 0.6}, height = ${figureHeight * 0.6}, dpi = ${dpi})
 ggsave("Figure3_Computational_Performance.png", fig3_runtime, width = ${figureWidth * 0.6}, height = ${figureHeight * 0.6}, dpi = ${dpi})
 
+# --- 7. Generate Figure 4: Binomial Variant Detection Probability Curves (Diseases 2025) ---
+# Model: P(X >= n | D_dedup, VAF) = 1 - sum_{k=0}^{n-1} dbinom(k, size=D_dedup, prob=VAF)
+# Authors: Coquerelle M. & Cabello-Aguilar S.
+depth_grid <- seq(10, 500, by = 5)
+vaf_levels <- c(0.01, 0.05, 0.10, 0.20, 0.50)
+min_reads <- 3 # n = 3 minimum mutated reads required
+
+df_binomial <- expand.grid(D_dedup = depth_grid, VAF = vaf_levels) %>%
+  rowwise() %>%
+  mutate(
+    ProbLoss = sum(dbinom(0:(min_reads - 1), size = D_dedup, prob = VAF)),
+    ProbDetectionPct = (1 - ProbLoss) * 100,
+    VAF_Label = paste0("VAF ", VAF * 100, "%")
+  )
+
+fig4_binomial <- ggplot(df_binomial, aes(x = D_dedup, y = ProbDetectionPct, color = VAF_Label)) +
+  geom_line(linewidth = 1.1) +
+  geom_hline(yintercept = 99.9, linetype = "dashed", color = "#059669", linewidth = 0.7) +
+  geom_hline(yintercept = 99.0, linetype = "dotted", color = "#4f46e5", linewidth = 0.7) +
+  annotate("text", x = 450, y = 99.9, label = "Seuil 99.9% (Loss <= 0.1%)", vjust = -0.5, color = "#059669", fontface = "bold", size = 3) +
+  annotate("text", x = 450, y = 99.0, label = "Seuil 99.0% (Loss <= 1.0%)", vjust = 1.5, color = "#4f46e5", fontface = "bold", size = 3) +
+  scale_y_continuous(limits = c(0, 100), labels = function(x) paste0(x, "%")) +
+  scale_color_brewer(palette = "Set1") +
+  labs(
+    title = "Figure 4: Binomial Detection Probability vs Deduplicated Coverage D_dedup",
+    subtitle = "Model: Cabello-Aguilar & Coquerelle (Diseases 2025) | Confirmation threshold n = 3 reads",
+    x = "Deduplicated Coverage Depth (D_dedup)",
+    y = "Detection Probability P(X >= 3) (%)",
+    color = "Target VAF"
+  ) +
+  theme_publication()
+
+ggsave("Figure4_Binomial_Detection_LOD.pdf", fig4_binomial, width = ${figureWidth}, height = ${figureHeight * 0.75}, dpi = ${dpi})
+ggsave("Figure4_Binomial_Detection_LOD.png", fig4_binomial, width = ${figureWidth}, height = ${figureHeight * 0.75}, dpi = ${dpi})
+
 cat("==============================================================================\\n")
 cat("SUCCESS: All high-rigor benchmark figures generated in target workspace directory.\\n")
 cat("Generated Files:\\n")
 cat("  - Figure1_Technical_Bioinformatics_QC.pdf / .png\\n")
 cat("  - Figure2_Bland_Altman_VAF_Agreement.pdf / .png\\n")
 cat("  - Figure3_Computational_Performance.pdf / .png\\n")
+cat("  - Figure4_Binomial_Detection_LOD.pdf / .png\\n")
 cat("==============================================================================\\n")
 `;
 }

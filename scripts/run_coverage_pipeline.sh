@@ -19,7 +19,7 @@ SAMPLES=("MF1284" "MF1358" "MF746")
 THREADS=8
 
 if [ ! -f "$BED_FILE" ]; then
-    echo "⚠️ BED file $BED_FILE not found in working directory. Using default capture_panel.bed if available."
+    echo " BED file $BED_FILE not found in working directory. Using default capture_panel.bed if available."
 fi
 
 # 2. Cleanup previous mosdepth temporary files
@@ -59,7 +59,7 @@ python3 scripts/generate_benchmark_json.py \
     --output bench_coverage_metrics.json
 
 echo "========================================================================="
-echo " ✅ Pipeline execution completed successfully!"
+echo " Pipeline execution completed successfully!"
 echo "    Generated: bench_coverage_metrics.json"
 echo "    You can drag and drop bench_coverage_metrics.json directly into the Web UI!"
 echo "========================================================================="

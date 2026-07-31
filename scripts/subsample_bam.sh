@@ -71,7 +71,25 @@ for bam in "${BAM_FILES[@]}"; do
 
     # 1. Calcul rapide de la profondeur moyenne dans le BED cible via mosdepth
     echo "  [1/4] Mesure de la profondeur moyenne actuelle sur le BED..."
-    mosdepth -n -b "$BED_FILE" "$tmp_prefix" "$bam" > /dev/null 2>&1
+    
+    # Détection de l'usage de 'chr' dans le BAM vs le BED
+    bam_has_chr=$(samtools view -H "$bam" 2>/dev/null | grep -m 1 '^@SQ' | grep -c 'SN:chr' || true)
+    bed_has_chr=$(grep -v '^#' "$BED_FILE" | grep -m 1 '^chr' -c || true)
+    
+    effective_bed="$BED_FILE"
+    tmp_bed=""
+    
+    if [ "$bam_has_chr" -gt 0 ] && [ "$bed_has_chr" -eq 0 ]; then
+        tmp_bed="${tmp_prefix}_matching.bed"
+        awk -F'\t' 'BEGIN{OFS="\t"} {$1="chr"$1; print}' "$BED_FILE" > "$tmp_bed"
+        effective_bed="$tmp_bed"
+    elif [ "$bam_has_chr" -eq 0 ] && [ "$bed_has_chr" -gt 0 ]; then
+        tmp_bed="${tmp_prefix}_matching.bed"
+        sed 's/^chr//' "$BED_FILE" > "$tmp_bed"
+        effective_bed="$tmp_bed"
+    fi
+
+    mosdepth -n -b "$effective_bed" "$tmp_prefix" "$bam" > /dev/null 2>&1
 
     summary_file="${tmp_prefix}.mosdepth.summary.txt"
     mean_dp=""
@@ -82,11 +100,11 @@ for bam in "${BAM_FILES[@]}"; do
     fi
 
     # Fallback de secours si summary.txt n'a pas la ligne attendue
-    if [ -z "$mean_dp" ] || [ "$mean_dp" == "0" ]; then
+    if [ -z "$mean_dp" ] || [ "$mean_dp" == "0" ] || [ "$mean_dp" == "0.00" ]; then
         mean_dp=$(zcat "${tmp_prefix}.regions.bed.gz" 2>/dev/null | awk -F'\t' '{len=$3-$2; sum+=$4*len; total+=len} END {if (total>0) printf "%.2f", sum/total; else print "0"}')
     fi
 
-    # Nettoyage des fichiers temporaires mosdepth
+    # Nettoyage des fichiers temporaires mosdepth et BED temporaire
     rm -f ${tmp_prefix}*
 
     echo "  -> Profondeur moyenne mesurée dans le BED = ${mean_dp}x"

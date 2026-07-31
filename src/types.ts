@@ -2,7 +2,7 @@ export type AlignerId = "Dragen" | "NextGENe" | "BWA_Markdup";
 
 export type SampleId = "MF1284" | "MF1358" | "MF746";
 
-export type RunId = "Run1" | "Run2" | "Run1_Sub40x";
+export type RunId = "Run1" | "Run2" | "Run1_Sub200x" | "Run1_Sub100x" | "Run1_Sub40x" | string;
 
 export interface AlignerInfo {
   id: AlignerId;

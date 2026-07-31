@@ -18,19 +18,26 @@ import { BarChart3, Stethoscope, Calculator, Cpu, Filter, BookOpen } from "lucid
 
 interface MetricsDashboardProps {
   selectedSample: string;
+  selectedRun?: string;
 }
 
-export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ selectedSample }) => {
+export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ selectedSample, selectedRun = "ALL" }) => {
   const [metricTab, setMetricTab] = useState<"technical" | "clinical" | "statistical" | "computational">("technical");
 
-  // Filter dataset by sample or compute cohort averages
+  // Filter dataset by run and sample, or compute averages
   const filteredData = React.useMemo(() => {
+    // 1. Subset by Run condition if selected
+    let base = BENCHMARK_DATASET;
+    if (selectedRun !== "ALL") {
+      base = base.filter((d) => d.runId === selectedRun);
+    }
+
     if (selectedSample === "ALL") {
-      // Compute cohort average across MF1284, MF1358, MF746 for each aligner
+      // Compute cohort average across samples for each aligner in the subset
       const aligners = ["Dragen", "NextGENe", "BWA_Markdup"] as const;
       return aligners.map((aligner) => {
-        const items = BENCHMARK_DATASET.filter((d) => d.aligner === aligner);
-        const count = items.length;
+        const items = base.filter((d) => d.aligner === aligner);
+        const count = items.length || 1;
 
         const avgTech = {
           mappedReadsPct: Number((items.reduce((s, i) => s + i.technical.mappedReadsPct, 0) / count).toFixed(2)),
@@ -66,7 +73,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ selectedSamp
         };
 
         return {
-          sampleId: "Mean Cohort" as any,
+          sampleId: `Cohort Mean (${selectedRun})` as any,
           aligner,
           alignerName: ALIGNERS_INFO[aligner].name,
           technical: avgTech,
@@ -77,11 +84,11 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ selectedSamp
       });
     }
 
-    return BENCHMARK_DATASET.filter((d) => d.sampleId === selectedSample).map((d) => ({
+    return base.filter((d) => d.sampleId === selectedSample).map((d) => ({
       ...d,
       alignerName: ALIGNERS_INFO[d.aligner].name,
     }));
-  }, [selectedSample]);
+  }, [selectedSample, selectedRun]);
 
   return (
     <div className="space-y-6">
@@ -115,7 +122,7 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ selectedSamp
 
         <div className="flex items-center space-x-2 text-xs text-slate-500 font-mono bg-slate-50 px-3 py-1.5 rounded-md border border-slate-200">
           <Filter className="h-3.5 w-3.5 text-slate-400" />
-          <span>Active View: {selectedSample === "ALL" ? "Mean Cohort (n=3)" : `Sample ${selectedSample}`}</span>
+          <span>Active View: {selectedSample === "ALL" ? "Moyenne Cohorte (n=3)" : `Échantillon ${selectedSample}`} | Condition: {selectedRun === "ALL" ? "Tous Runs (Combinés)" : selectedRun === "Run1" ? "Run 1 (120x)" : selectedRun === "Run2" ? "Run 2 (Val)" : "Run 1 Subsampled (40x)"}</span>
         </div>
       </div>
 

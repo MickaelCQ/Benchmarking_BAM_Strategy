@@ -6,6 +6,8 @@ interface HeaderProps {
   setActiveTab: (tab: string) => void;
   selectedSample: string;
   setSelectedSample: (sample: string) => void;
+  selectedRun: string;
+  setSelectedRun: (run: string) => void;
   onExportAll: () => void;
 }
 
@@ -14,6 +16,8 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   selectedSample,
   setSelectedSample,
+  selectedRun,
+  setSelectedRun,
   onExportAll,
 }) => {
   return (
@@ -40,32 +44,80 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Sample Switcher */}
-          <div className="hidden md:flex items-center bg-slate-800/80 p-1 rounded-lg border border-slate-700">
-            <span className="text-xs font-semibold uppercase text-slate-400 px-2">Cohort:</span>
-            <button
-              onClick={() => setSelectedSample("ALL")}
-              className={`px-3 py-1 rounded text-xs font-semibold transition-all ${
-                selectedSample === "ALL"
-                  ? "bg-sky-600 text-white shadow-sm"
-                  : "text-slate-300 hover:text-white hover:bg-slate-700/50"
-              }`}
-            >
-              Mean Cohort (n=3)
-            </button>
-            {["MF1284", "MF1358", "MF746"].map((s) => (
+          {/* Run & Sample Switchers */}
+          <div className="hidden md:flex items-center space-x-3">
+            {/* Run / Condition Selector */}
+            <div className="flex items-center bg-slate-800/90 p-1 rounded-lg border border-slate-700">
+              <span className="text-[11px] font-bold uppercase text-slate-400 px-2">Run:</span>
               <button
-                key={s}
-                onClick={() => setSelectedSample(s)}
-                className={`px-3 py-1 rounded text-xs font-semibold transition-all ${
-                  selectedSample === s
+                onClick={() => setSelectedRun("ALL")}
+                className={`px-2.5 py-1 rounded text-xs font-semibold transition-all ${
+                  selectedRun === "ALL"
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                }`}
+              >
+                Tous Runs
+              </button>
+              <button
+                onClick={() => setSelectedRun("Run1")}
+                className={`px-2.5 py-1 rounded text-xs font-semibold transition-all ${
+                  selectedRun === "Run1"
                     ? "bg-sky-600 text-white shadow-sm"
                     : "text-slate-300 hover:text-white hover:bg-slate-700/50"
                 }`}
               >
-                {s}
+                Run1 (~120x)
               </button>
-            ))}
+              <button
+                onClick={() => setSelectedRun("Run2")}
+                className={`px-2.5 py-1 rounded text-xs font-semibold transition-all ${
+                  selectedRun === "Run2"
+                    ? "bg-purple-600 text-white shadow-sm"
+                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                }`}
+              >
+                Run2 (Val)
+              </button>
+              <button
+                onClick={() => setSelectedRun("Run1_Sub40x")}
+                className={`px-2.5 py-1 rounded text-xs font-semibold transition-all ${
+                  selectedRun === "Run1_Sub40x"
+                    ? "bg-amber-600 text-white shadow-sm"
+                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                }`}
+              >
+                Subsamp (~40x)
+              </button>
+            </div>
+
+            {/* Sample Selector */}
+            <div className="flex items-center bg-slate-800/90 p-1 rounded-lg border border-slate-700">
+              <span className="text-[11px] font-bold uppercase text-slate-400 px-2">Échantillon:</span>
+              <button
+                onClick={() => setSelectedSample("ALL")}
+                className={`px-2.5 py-1 rounded text-xs font-semibold transition-all ${
+                  selectedSample === "ALL"
+                    ? "bg-sky-600 text-white shadow-sm"
+                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                }`}
+              >
+                Moyenne Cohorte
+              </button>
+              {["MF1284", "MF1358", "MF746"].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setSelectedSample(s)}
+                  className={`px-2.5 py-1 rounded text-xs font-semibold transition-all ${
+                    selectedSample === s
+                      ? "bg-sky-600 text-white shadow-sm"
+                      : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Quick Action Button */}

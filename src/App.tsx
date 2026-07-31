@@ -15,6 +15,7 @@ import { Download, CheckCircle2, X } from "lucide-react";
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [selectedSample, setSelectedSample] = useState<string>("ALL");
+  const [selectedRun, setSelectedRun] = useState<string>("ALL");
   const [showExportModal, setShowExportModal] = useState<boolean>(false);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
 
@@ -86,6 +87,8 @@ export default function App() {
         setActiveTab={setActiveTab}
         selectedSample={selectedSample}
         setSelectedSample={setSelectedSample}
+        selectedRun={selectedRun}
+        setSelectedRun={setSelectedRun}
         onExportAll={handleExportAll}
       />
 
@@ -100,7 +103,7 @@ export default function App() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === "overview" && <OverviewSection onNavigateTab={setActiveTab} />}
-        {activeTab === "dashboard" && <MetricsDashboard selectedSample={selectedSample} />}
+        {activeTab === "dashboard" && <MetricsDashboard selectedSample={selectedSample} selectedRun={selectedRun} />}
         {activeTab === "gene-coverage" && <GeneCoverageAnalyzer initialMode="exon" />}
         {activeTab === "gene-region-coverage" && <GeneCoverageAnalyzer initialMode="gene" />}
         {(activeTab === "variant-loss-prob" || activeTab === "ctdna-lod") && <CtDnaLodCalculator />}

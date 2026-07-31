@@ -2,6 +2,8 @@ export type AlignerId = "Dragen" | "NextGENe" | "BWA_Markdup";
 
 export type SampleId = "MF1284" | "MF1358" | "MF746";
 
+export type RunId = "Run1" | "Run2" | "Run1_Sub40x";
+
 export interface AlignerInfo {
   id: AlignerId;
   name: string;
@@ -63,6 +65,7 @@ export interface ComputationalMetrics {
 
 export interface SampleBenchmarkData {
   sampleId: SampleId;
+  runId: RunId;
   aligner: AlignerId;
   bamFilename: string;
   technical: TechnicalMetrics;

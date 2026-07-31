@@ -138,7 +138,13 @@ export default function App() {
             customDataset={customDataset}
           />
         )}
-        {(activeTab === "variant-loss-prob" || activeTab === "ctdna-lod") && <CtDnaLodCalculator />}
+        {(activeTab === "variant-loss-prob" || activeTab === "ctdna-lod") && (
+          <CtDnaLodCalculator
+            selectedSample={selectedSample}
+            selectedRun={selectedRun}
+            customDataset={customDataset}
+          />
+        )}
         {activeTab === "r-scripts" && <RScriptGenerator />}
         {activeTab === "latex" && <LaTeXReportGenerator />}
         {activeTab === "cli" && <CliPipelineGuide />}

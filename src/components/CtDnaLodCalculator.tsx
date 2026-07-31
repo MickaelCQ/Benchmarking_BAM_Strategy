@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { CAPTURE_BED_GENES, GeneCoverageProfile } from "../data/geneCoverageData";
+import { FileDropZone } from "./FileDropZone";
 import {
   calculateVariantDetectionProb,
   findRequiredDepthForConfidence,
@@ -35,12 +36,25 @@ import {
   ChevronUp,
 } from "lucide-react";
 
-export const VariantLossCalculator: React.FC = () => {
+interface VariantLossCalculatorProps {
+  selectedSample?: string;
+  selectedRun?: string;
+  customDataset?: any[] | null;
+}
+
+export const VariantLossCalculator: React.FC<VariantLossCalculatorProps> = ({
+  selectedSample = "ALL",
+  selectedRun = "ALL",
+  customDataset: parentCustomDataset,
+}) => {
   const [selectedGeneSymbol, setSelectedGeneSymbol] = useState<string>("COL3A1");
   const [targetVafPct, setTargetVafPct] = useState<number>(20.0); // 20% VAF as default requested
   const [minReadsThreshold, setMinReadsThreshold] = useState<number>(3); // n=3 haute sensibilite, n=5 standard
   const [targetConfidence, setTargetConfidence] = useState<number>(0.99); // 99% detection target
   const [showMethodologyBox, setShowMethodologyBox] = useState<boolean>(true); // Encadre des modalites de calcul
+  const [localCustomDataset, setLocalCustomDataset] = useState<any[] | null>(null);
+
+  const customDataset = localCustomDataset || parentCustomDataset;
 
   const currentGene: GeneCoverageProfile =
     CAPTURE_BED_GENES.find((g) => g.geneSymbol === selectedGeneSymbol) || CAPTURE_BED_GENES[0];
@@ -50,6 +64,84 @@ export const VariantLossCalculator: React.FC = () => {
   const formattedConfidence =
     targetConfidence === 0.999 ? "99.9%" : targetConfidence === 0.99 ? "99%" : `${(targetConfidence * 100).toFixed(0)}%`;
 
+  // Dynamic scaled activeExons based on selected run, sample, and uploaded dataset
+  const activeExons = useMemo(() => {
+    if (!customDataset || customDataset.length === 0) {
+      return currentGene.exons;
+    }
+
+    // Check Strategy A: SampleBenchmarkData[] (consolidated benchmark data)
+    if (customDataset[0] && customDataset[0].aligner && customDataset[0].geneCoverage) {
+      let subset = customDataset;
+      if (selectedRun !== "ALL") {
+        subset = subset.filter((item) => item.runId === selectedRun);
+      }
+      if (selectedSample !== "ALL") {
+        subset = subset.filter((item) => item.sampleId === selectedSample);
+      }
+      if (subset.length === 0) subset = customDataset;
+
+      const dragenItems = subset.filter((i) => (i.aligner || "").toLowerCase().includes("dragen"));
+      const nextgeneItems = subset.filter((i) => (i.aligner || "").toLowerCase().includes("nextgene"));
+      const bwaItems = subset.filter((i) => (i.aligner || "").toLowerCase().includes("bwa"));
+
+      const getMeanForGene = (items: any[], gene: string) => {
+        if (items.length === 0) return null;
+        let sum = 0;
+        let count = 0;
+        for (const item of items) {
+          if (item.geneCoverage && typeof item.geneCoverage[gene] === "number") {
+            sum += item.geneCoverage[gene];
+            count++;
+          }
+        }
+        return count > 0 ? sum / count : null;
+      };
+
+      const dragenGeneD = getMeanForGene(dragenItems, selectedGeneSymbol);
+      const nextgeneGeneD = getMeanForGene(nextgeneItems, selectedGeneSymbol);
+      const bwaGeneD = getMeanForGene(bwaItems, selectedGeneSymbol);
+
+      if (dragenGeneD !== null || nextgeneGeneD !== null || bwaGeneD !== null) {
+        const baseAvgDragen = currentGene.exons.reduce((a, b) => a + b.dragenDepth, 0) / (currentGene.exons.length || 1);
+        const baseAvgNextgene = currentGene.exons.reduce((a, b) => a + b.nextgeneDepth, 0) / (currentGene.exons.length || 1);
+        const baseAvgBwa = currentGene.exons.reduce((a, b) => a + b.bwaDepth, 0) / (currentGene.exons.length || 1);
+
+        const scaleDragen = baseAvgDragen > 0 ? (dragenGeneD ?? baseAvgDragen) / baseAvgDragen : 1;
+        const scaleNextgene = baseAvgNextgene > 0 ? (nextgeneGeneD ?? baseAvgNextgene) / baseAvgNextgene : 1;
+        const scaleBwa = baseAvgBwa > 0 ? (bwaGeneD ?? baseAvgBwa) / baseAvgBwa : 1;
+
+        return currentGene.exons.map((e) => ({
+          ...e,
+          dragenDepth: Math.max(1, Math.round(e.dragenDepth * scaleDragen)),
+          nextgeneDepth: Math.max(1, Math.round(e.nextgeneDepth * scaleNextgene)),
+          bwaDepth: Math.max(1, Math.round(e.bwaDepth * scaleBwa)),
+        }));
+      }
+    }
+
+    // Strategy B: Legacy flat array of exon objects (uploaded json with dragenDepth, nextgeneDepth, bwaDepth)
+    const matching = customDataset.filter(
+      (item: any) => item.gene && item.gene.toString().toUpperCase() === selectedGeneSymbol.toUpperCase()
+    );
+    if (matching.length > 0) {
+      return matching.map((item: any, idx: number) => ({
+        exonId: item.exonId || `Exon ${idx + 1}`,
+        exonNumber: item.exonNumber || idx + 1,
+        chr: item.chr || currentGene.exons[0]?.chr || "chr12",
+        start: item.start || 0,
+        end: item.end || 0,
+        lengthBp: item.lengthBp || 150,
+        gcContentPct: item.gcContentPct || 45,
+        dragenDepth: item.dragenDepth ?? 0,
+        nextgeneDepth: item.nextgeneDepth ?? 0,
+        bwaDepth: item.bwaDepth ?? 0,
+      }));
+    }
+
+    return currentGene.exons;
+  }, [customDataset, selectedGeneSymbol, selectedRun, selectedSample, currentGene]);
+
   // Minimum required depth to achieve targetConfidence (e.g. 99.9%, 99%, 95%) at targetVaf
   const requiredDepth = useMemo(() => {
     return findRequiredDepthForConfidence(targetVafDecimal, targetConfidence, minReadsThreshold);
@@ -57,13 +149,13 @@ export const VariantLossCalculator: React.FC = () => {
 
   // Overall gene mean depths
   const geneDragenDepth = Math.round(
-    currentGene.exons.reduce((acc, e) => acc + e.dragenDepth, 0) / currentGene.exons.length
+    activeExons.reduce((acc, e) => acc + e.dragenDepth, 0) / (activeExons.length || 1)
   );
   const geneNextgeneDepth = Math.round(
-    currentGene.exons.reduce((acc, e) => acc + e.nextgeneDepth, 0) / currentGene.exons.length
+    activeExons.reduce((acc, e) => acc + e.nextgeneDepth, 0) / (activeExons.length || 1)
   );
   const geneBwaDepth = Math.round(
-    currentGene.exons.reduce((acc, e) => acc + e.bwaDepth, 0) / currentGene.exons.length
+    activeExons.reduce((acc, e) => acc + e.bwaDepth, 0) / (activeExons.length || 1)
   );
 
   // Overall gene loss probabilities
@@ -85,7 +177,7 @@ export const VariantLossCalculator: React.FC = () => {
 
   // Exon-level calculations
   const exonLossData = useMemo(() => {
-    return currentGene.exons.map((exon) => {
+    return activeExons.map((exon) => {
       const dragenRes = calculateVariantDetectionProb(exon.dragenDepth, targetVafDecimal, minReadsThreshold);
       const nextgeneRes = calculateVariantDetectionProb(exon.nextgeneDepth, targetVafDecimal, minReadsThreshold);
       const bwaRes = calculateVariantDetectionProb(exon.bwaDepth, targetVafDecimal, minReadsThreshold);
@@ -109,7 +201,7 @@ export const VariantLossCalculator: React.FC = () => {
         bwaDetectPct: Math.round(bwaRes.pDetection * 10000) / 100,
       };
     });
-  }, [currentGene, targetVafDecimal, minReadsThreshold]);
+  }, [activeExons, targetVafDecimal, minReadsThreshold]);
 
   return (
     <div className="space-y-8">
@@ -148,7 +240,11 @@ export const VariantLossCalculator: React.FC = () => {
         </div>
       </div>
 
-      {/* Encadré Précis des Modalités de Calcul de la Simulation */}
+      {/* Drag & Drop zone for metrics or BED coverage files */}
+      <FileDropZone
+        onDataLoaded={(data) => setLocalCustomDataset(data)}
+        currentDataCount={customDataset ? customDataset.length : undefined}
+      />
       <div className="bg-gradient-to-br from-indigo-50/90 via-slate-50 to-sky-50/80 p-5 rounded-2xl border border-indigo-200/80 shadow-sm space-y-4">
         <div className="flex items-center justify-between cursor-pointer" onClick={() => setShowMethodologyBox(!showMethodologyBox)}>
           <div className="flex items-center space-x-2">

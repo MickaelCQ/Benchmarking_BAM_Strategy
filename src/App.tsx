@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Header } from "./components/Header";
 import { OverviewSection } from "./components/OverviewSection";
 import { MetricsDashboard } from "./components/MetricsDashboard";
@@ -18,6 +18,18 @@ export default function App() {
   const [selectedRun, setSelectedRun] = useState<string>("ALL");
   const [showExportModal, setShowExportModal] = useState<boolean>(false);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const [customDataset, setCustomDataset] = useState<any[] | null>(null);
+
+  useEffect(() => {
+    fetch("/benchmark_consolidated_data.json")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data) && data.length > 0) {
+          setCustomDataset(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleExportAll = () => {
     setShowExportModal(true);
@@ -103,9 +115,29 @@ export default function App() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === "overview" && <OverviewSection onNavigateTab={setActiveTab} />}
-        {activeTab === "dashboard" && <MetricsDashboard selectedSample={selectedSample} selectedRun={selectedRun} />}
-        {activeTab === "gene-coverage" && <GeneCoverageAnalyzer initialMode="exon" />}
-        {activeTab === "gene-region-coverage" && <GeneCoverageAnalyzer initialMode="gene" />}
+        {activeTab === "dashboard" && (
+          <MetricsDashboard
+            selectedSample={selectedSample}
+            selectedRun={selectedRun}
+            customDataset={customDataset}
+          />
+        )}
+        {activeTab === "gene-coverage" && (
+          <GeneCoverageAnalyzer
+            initialMode="exon"
+            selectedSample={selectedSample}
+            selectedRun={selectedRun}
+            customDataset={customDataset}
+          />
+        )}
+        {activeTab === "gene-region-coverage" && (
+          <GeneCoverageAnalyzer
+            initialMode="gene"
+            selectedSample={selectedSample}
+            selectedRun={selectedRun}
+            customDataset={customDataset}
+          />
+        )}
         {(activeTab === "variant-loss-prob" || activeTab === "ctdna-lod") && <CtDnaLodCalculator />}
         {activeTab === "r-scripts" && <RScriptGenerator />}
         {activeTab === "latex" && <LaTeXReportGenerator />}

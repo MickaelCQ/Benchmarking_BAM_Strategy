@@ -30,27 +30,41 @@ export const ALIGNERS_INFO: Record<string, AlignerInfo> = {
   },
 };
 
-export const RUNS_INFO: Record<RunId, { id: RunId; name: string; badge: string; color: string; description: string }> = {
+export const RUNS_INFO: Record<string, { id: string; name: string; badge: string; color: string; description: string }> = {
   Run1: {
     id: "Run1",
-    name: "Run 1 (Native Depth ~120x)",
-    badge: "Native Depth",
+    name: "Run 1 Brut (~1000x-1600x)",
+    badge: "Native Experimental Depth",
     color: "#0284c7",
-    description: "Séquençage haute profondeur nominal (120-140x) pour couverture clinique maximale.",
+    description: "Séquençage expérimental haute profondeur (1000x-1600x) mesuré sur le volet BED de capture.",
+  },
+  Run1_Sub200x: {
+    id: "Run1_Sub200x",
+    name: "Subsampled 200x (~320x-390x)",
+    badge: "Target 200x",
+    color: "#8b5cf6",
+    description: "Sous-échantillonnage samtools view -s ciblant un objectif 200x sur le volet BED.",
+  },
+  Run1_Sub100x: {
+    id: "Run1_Sub100x",
+    name: "Subsampled 100x (~160x-195x)",
+    badge: "Target 100x",
+    color: "#059669",
+    description: "Sous-échantillonnage samtools view -s ciblant un objectif 100x sur le volet BED.",
+  },
+  Run1_Sub40x: {
+    id: "Run1_Sub40x",
+    name: "Subsampled 40x (~60x-78x)",
+    badge: "Target 40x",
+    color: "#f59e0b",
+    description: "Sous-échantillonnage samtools view -s ciblant un objectif 40x sur le volet BED.",
   },
   Run2: {
     id: "Run2",
     name: "Run 2 (Validation Replicate)",
     badge: "Validation Replicate",
-    color: "#8b5cf6",
-    description: "Réplicat technique indépendant pour évaluer la répétabilité inter-runs.",
-  },
-  Run1_Sub40x: {
-    id: "Run1_Sub40x",
-    name: "Run 1 Subsampled (~40x)",
-    badge: "Low Depth Subsampled",
-    color: "#f59e0b",
-    description: "Sous-échantillonnage déterministe à 40x par samtools view -s pour évaluer la régularité et sensibilité aux basses profondeurs.",
+    color: "#ec4899",
+    description: "Réplicat technique de validation inter-runs.",
   },
 };
 

@@ -45,9 +45,17 @@ import {
 
 interface GeneCoverageAnalyzerProps {
   initialMode?: "exon" | "gene";
+  selectedSample?: string;
+  selectedRun?: string;
+  customDataset?: any[] | null;
 }
 
-export const GeneCoverageAnalyzer: React.FC<GeneCoverageAnalyzerProps> = ({ initialMode = "exon" }) => {
+export const GeneCoverageAnalyzer: React.FC<GeneCoverageAnalyzerProps> = ({
+  initialMode = "exon",
+  selectedSample = "ALL",
+  selectedRun = "ALL",
+  customDataset,
+}) => {
   const [selectedGeneSymbol, setSelectedGeneSymbol] = useState<string>("COL3A1");
   const [geneSearchQuery, setGeneSearchQuery] = useState<string>("");
   const [customBedText, setCustomBedText] = useState<string>("");
@@ -166,19 +174,75 @@ export const GeneCoverageAnalyzer: React.FC<GeneCoverageAnalyzerProps> = ({ init
     return activeProfiles.find((g) => g.geneSymbol === selectedGeneSymbol) || activeProfiles[0];
   }, [activeProfiles, selectedGeneSymbol]);
 
-  // Convert uploaded bench_coverage_metrics.json records to ExonCoverage objects
+  // Convert uploaded/consolidated benchmark data to ExonCoverage objects
   const realJsonExons = useMemo(() => {
-    if (!uploadedJsonData || uploadedJsonData.length === 0) return null;
+    const rawData = uploadedJsonData || customDataset;
+    if (!rawData || rawData.length === 0) return null;
+
+    // Strategy A: Check if rawData is SampleBenchmarkData[] (consolidated format)
+    if (rawData[0] && rawData[0].aligner && rawData[0].geneCoverage) {
+      let subset = rawData;
+      if (selectedRun !== "ALL") {
+        subset = subset.filter((item) => item.runId === selectedRun);
+      }
+      if (selectedSample !== "ALL") {
+        subset = subset.filter((item) => item.sampleId === selectedSample);
+      }
+
+      if (subset.length === 0) subset = rawData;
+
+      // Extract depth for Dragen, Nextgene, BWA for the current selected gene
+      const dragenItems = subset.filter((i) => i.aligner === "Dragen" || i.aligner?.toLowerCase().includes("dragen"));
+      const nextgeneItems = subset.filter((i) => i.aligner === "NextGENe" || i.aligner?.toLowerCase().includes("nextgene"));
+      const bwaItems = subset.filter((i) => i.aligner === "BWA_Markdup" || i.aligner?.toLowerCase().includes("bwa"));
+
+      const getMeanForGene = (items: any[], gene: string) => {
+        if (items.length === 0) return null;
+        let sum = 0;
+        let count = 0;
+        for (const item of items) {
+          if (item.geneCoverage && typeof item.geneCoverage[gene] === "number") {
+            sum += item.geneCoverage[gene];
+            count++;
+          }
+        }
+        return count > 0 ? sum / count : null;
+      };
+
+      const dragenGeneD = getMeanForGene(dragenItems, selectedGeneSymbol);
+      const nextgeneGeneD = getMeanForGene(nextgeneItems, selectedGeneSymbol);
+      const bwaGeneD = getMeanForGene(bwaItems, selectedGeneSymbol);
+
+      if (dragenGeneD !== null || nextgeneGeneD !== null || bwaGeneD !== null) {
+        // Adjust currentProfile's exons with the real depths for this gene!
+        return currentProfile.exons.map((e) => {
+          // Scale base exon proportions by real mean depth
+          const baseAvgDragen = currentProfile.exons.reduce((a, b) => a + b.dragenDepth, 0) / (currentProfile.exons.length || 1);
+          const baseAvgNextgene = currentProfile.exons.reduce((a, b) => a + b.nextgeneDepth, 0) / (currentProfile.exons.length || 1);
+          const baseAvgBwa = currentProfile.exons.reduce((a, b) => a + b.bwaDepth, 0) / (currentProfile.exons.length || 1);
+
+          const scaleDragen = baseAvgDragen > 0 ? (dragenGeneD ?? baseAvgDragen) / baseAvgDragen : 1;
+          const scaleNextgene = baseAvgNextgene > 0 ? (nextgeneGeneD ?? baseAvgNextgene) / baseAvgNextgene : 1;
+          const scaleBwa = baseAvgBwa > 0 ? (bwaGeneD ?? baseAvgBwa) / baseAvgBwa : 1;
+
+          return {
+            ...e,
+            dragenDepth: Number((e.dragenDepth * scaleDragen).toFixed(1)),
+            nextgeneDepth: Number((e.nextgeneDepth * scaleNextgene).toFixed(1)),
+            bwaDepth: Number((e.bwaDepth * scaleBwa).toFixed(1)),
+          };
+        });
+      }
+    }
     
-    // Filter by selectedGeneSymbol if available
-    const matching = uploadedJsonData.filter(
-      (item) => item.gene && item.gene.toString().toUpperCase() === selectedGeneSymbol.toUpperCase()
+    // Strategy B: Legacy flat array of exon objects (with dragenDepth, nextgeneDepth, bwaDepth)
+    const matching = rawData.filter(
+      (item: any) => item.gene && item.gene.toString().toUpperCase() === selectedGeneSymbol.toUpperCase()
     );
 
-    // If no matching records for selectedGeneSymbol in the uploaded JSON, return null so we fall back cleanly to currentProfile
     if (matching.length === 0) return null;
 
-    return matching.map((item, idx) => {
+    return matching.map((item: any, idx: number) => {
       const dragenD = item.dragenDepth ?? 0;
       const nextgeneD = item.nextgeneDepth ?? 0;
       const bwaD = item.bwaDepth ?? 0;
@@ -208,7 +272,7 @@ export const GeneCoverageAnalyzer: React.FC<GeneCoverageAnalyzerProps> = ({ init
         notes: item.notes,
       } as ExonCoverage;
     });
-  }, [uploadedJsonData, selectedGeneSymbol, currentProfile]);
+  }, [uploadedJsonData, customDataset, selectedGeneSymbol, currentProfile, selectedRun, selectedSample]);
 
   // Exons ordered according to selected display order
   const activeExons = useMemo(() => {

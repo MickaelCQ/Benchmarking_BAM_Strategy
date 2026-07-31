@@ -67,17 +67,27 @@ export const Header: React.FC<HeaderProps> = ({
                     : "text-slate-300 hover:text-white hover:bg-slate-700/50"
                 }`}
               >
-                Run1 (~120x)
+                Run1 Brut (~1200x)
               </button>
               <button
-                onClick={() => setSelectedRun("Run2")}
+                onClick={() => setSelectedRun("Run1_Sub200x")}
                 className={`px-2.5 py-1 rounded text-xs font-semibold transition-all ${
-                  selectedRun === "Run2"
+                  selectedRun === "Run1_Sub200x"
                     ? "bg-purple-600 text-white shadow-sm"
                     : "text-slate-300 hover:text-white hover:bg-slate-700/50"
                 }`}
               >
-                Run2 (Val)
+                Sub 200x
+              </button>
+              <button
+                onClick={() => setSelectedRun("Run1_Sub100x")}
+                className={`px-2.5 py-1 rounded text-xs font-semibold transition-all ${
+                  selectedRun === "Run1_Sub100x"
+                    ? "bg-emerald-600 text-white shadow-sm"
+                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                }`}
+              >
+                Sub 100x
               </button>
               <button
                 onClick={() => setSelectedRun("Run1_Sub40x")}
@@ -87,7 +97,7 @@ export const Header: React.FC<HeaderProps> = ({
                     : "text-slate-300 hover:text-white hover:bg-slate-700/50"
                 }`}
               >
-                Subsamp (~40x)
+                Sub 40x
               </button>
             </div>
 

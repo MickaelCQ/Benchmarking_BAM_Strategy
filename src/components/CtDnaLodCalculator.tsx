@@ -1,6 +1,5 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { CAPTURE_BED_GENES, GeneCoverageProfile } from "../data/geneCoverageData";
-import { FileDropZone } from "./FileDropZone";
 import {
   calculateVariantDetectionProb,
   findRequiredDepthForConfidence,
@@ -34,6 +33,7 @@ import {
   Calculator,
   ChevronDown,
   ChevronUp,
+  Database,
 } from "lucide-react";
 
 interface VariantLossCalculatorProps {
@@ -54,6 +54,19 @@ export const VariantLossCalculator: React.FC<VariantLossCalculatorProps> = ({
   const [showMethodologyBox, setShowMethodologyBox] = useState<boolean>(true); // Encadre des modalites de calcul
   const [localCustomDataset, setLocalCustomDataset] = useState<any[] | null>(null);
 
+  useEffect(() => {
+    if (!parentCustomDataset && !localCustomDataset) {
+      fetch("/benchmark_consolidated_data.json")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (Array.isArray(data) && data.length > 0) {
+            setLocalCustomDataset(data);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [parentCustomDataset, localCustomDataset]);
+
   const customDataset = localCustomDataset || parentCustomDataset;
 
   const currentGene: GeneCoverageProfile =
@@ -70,8 +83,8 @@ export const VariantLossCalculator: React.FC<VariantLossCalculatorProps> = ({
       return currentGene.exons;
     }
 
-    // Check Strategy A: SampleBenchmarkData[] (consolidated benchmark data)
-    if (customDataset[0] && customDataset[0].aligner && customDataset[0].geneCoverage) {
+    // Strategy A: Benchmark Dataset with aligner & clinical.meanTargetDepth or geneCoverage
+    if (customDataset[0] && (customDataset[0].aligner || customDataset[0].clinical)) {
       let subset = customDataset;
       if (selectedRun !== "ALL") {
         subset = subset.filter((item) => item.runId === selectedRun);
@@ -85,31 +98,34 @@ export const VariantLossCalculator: React.FC<VariantLossCalculatorProps> = ({
       const nextgeneItems = subset.filter((i) => (i.aligner || "").toLowerCase().includes("nextgene"));
       const bwaItems = subset.filter((i) => (i.aligner || "").toLowerCase().includes("bwa"));
 
-      const getMeanForGene = (items: any[], gene: string) => {
+      const getMeanForAligner = (items: any[]) => {
         if (items.length === 0) return null;
         let sum = 0;
         let count = 0;
         for (const item of items) {
-          if (item.geneCoverage && typeof item.geneCoverage[gene] === "number") {
-            sum += item.geneCoverage[gene];
+          if (item.geneCoverage && typeof item.geneCoverage[selectedGeneSymbol] === "number") {
+            sum += item.geneCoverage[selectedGeneSymbol];
+            count++;
+          } else if (item.clinical && typeof item.clinical.meanTargetDepth === "number") {
+            sum += item.clinical.meanTargetDepth;
             count++;
           }
         }
         return count > 0 ? sum / count : null;
       };
 
-      const dragenGeneD = getMeanForGene(dragenItems, selectedGeneSymbol);
-      const nextgeneGeneD = getMeanForGene(nextgeneItems, selectedGeneSymbol);
-      const bwaGeneD = getMeanForGene(bwaItems, selectedGeneSymbol);
+      const dragenGeneD = getMeanForAligner(dragenItems);
+      const nextgeneGeneD = getMeanForAligner(nextgeneItems);
+      const bwaGeneD = getMeanForAligner(bwaItems);
 
       if (dragenGeneD !== null || nextgeneGeneD !== null || bwaGeneD !== null) {
         const baseAvgDragen = currentGene.exons.reduce((a, b) => a + b.dragenDepth, 0) / (currentGene.exons.length || 1);
         const baseAvgNextgene = currentGene.exons.reduce((a, b) => a + b.nextgeneDepth, 0) / (currentGene.exons.length || 1);
         const baseAvgBwa = currentGene.exons.reduce((a, b) => a + b.bwaDepth, 0) / (currentGene.exons.length || 1);
 
-        const scaleDragen = baseAvgDragen > 0 ? (dragenGeneD ?? baseAvgDragen) / baseAvgDragen : 1;
-        const scaleNextgene = baseAvgNextgene > 0 ? (nextgeneGeneD ?? baseAvgNextgene) / baseAvgNextgene : 1;
-        const scaleBwa = baseAvgBwa > 0 ? (bwaGeneD ?? baseAvgBwa) / baseAvgBwa : 1;
+        const scaleDragen = dragenGeneD !== null && baseAvgDragen > 0 ? dragenGeneD / baseAvgDragen : 1;
+        const scaleNextgene = nextgeneGeneD !== null && baseAvgNextgene > 0 ? nextgeneGeneD / baseAvgNextgene : 1;
+        const scaleBwa = bwaGeneD !== null && baseAvgBwa > 0 ? bwaGeneD / baseAvgBwa : 1;
 
         return currentGene.exons.map((e) => ({
           ...e,
@@ -240,11 +256,6 @@ export const VariantLossCalculator: React.FC<VariantLossCalculatorProps> = ({
         </div>
       </div>
 
-      {/* Drag & Drop zone for metrics or BED coverage files */}
-      <FileDropZone
-        onDataLoaded={(data) => setLocalCustomDataset(data)}
-        currentDataCount={customDataset ? customDataset.length : undefined}
-      />
       <div className="bg-gradient-to-br from-indigo-50/90 via-slate-50 to-sky-50/80 p-5 rounded-2xl border border-indigo-200/80 shadow-sm space-y-4">
         <div className="flex items-center justify-between cursor-pointer" onClick={() => setShowMethodologyBox(!showMethodologyBox)}>
           <div className="flex items-center space-x-2">
@@ -524,8 +535,31 @@ export const VariantLossCalculator: React.FC<VariantLossCalculatorProps> = ({
           </div>
         </div>
 
+        {/* Dataset Provenance Indicator */}
+        <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-slate-900 text-slate-200 text-xs font-mono shadow-xs border border-slate-800">
+          <div className="flex items-center space-x-2">
+            <Database className="w-4 h-4 text-emerald-400" />
+            <span>
+              Profondeurs mesurées en temps réel sur <strong className="text-emerald-300">benchmark_consolidated_data.json</strong>
+            </span>
+          </div>
+          <div className="flex items-center space-x-3 text-[11px] text-slate-400">
+            <span>
+              Gène : <strong className="text-amber-300">{selectedGeneSymbol}</strong>
+            </span>
+            <span>|</span>
+            <span>
+              Échantillon : <strong className="text-sky-300">{selectedSample}</strong>
+            </span>
+            <span>|</span>
+            <span>
+              Run : <strong className="text-indigo-300">{selectedRun}</strong>
+            </span>
+          </div>
+        </div>
+
         {/* Key Benchmark Metrics Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
           {/* Required Depth Metric */}
           <div className="p-4 rounded-xl bg-gradient-to-br from-indigo-900 to-slate-900 text-white shadow-md border border-indigo-700 space-y-1">
             <div className="flex items-center justify-between text-indigo-300">
@@ -543,12 +577,15 @@ export const VariantLossCalculator: React.FC<VariantLossCalculatorProps> = ({
           {/* DRAGEN Status */}
           <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 shadow-xs space-y-1">
             <div className="flex items-center justify-between text-sky-900">
-              <span className="font-bold text-xs">DRAGEN v4.0 ({geneDragenDepth}x moy)</span>
+              <span className="font-bold text-xs">DRAGEN v4.0</span>
               <span className="text-[10px] font-mono bg-sky-200 text-sky-900 font-bold px-1.5 py-0.5 rounded">
                 GPU
               </span>
             </div>
-            <div className="text-xl font-extrabold text-sky-950 font-mono">
+            <div className="text-xs font-bold font-mono text-sky-800">
+              Profondeur moyenne : <span className="text-sm text-sky-950 font-black">{geneDragenDepth}x</span>
+            </div>
+            <div className="text-sm font-extrabold text-sky-950 font-mono pt-1">
               Proba Perte: {dragenGeneProb.pLoss < 0.0001 ? "< 0.01%" : `${(dragenGeneProb.pLoss * 100).toFixed(2)}%`}
             </div>
             <div className="text-[11px] text-slate-600">
@@ -559,12 +596,15 @@ export const VariantLossCalculator: React.FC<VariantLossCalculatorProps> = ({
           {/* NextGENe Status */}
           <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 shadow-xs space-y-1">
             <div className="flex items-center justify-between text-emerald-900">
-              <span className="font-bold text-xs">NextGENe v2.4 ({geneNextgeneDepth}x moy)</span>
+              <span className="font-bold text-xs">NextGENe v2.4</span>
               <span className="text-[10px] font-mono bg-emerald-200 text-emerald-900 font-bold px-1.5 py-0.5 rounded">
                 K-mer
               </span>
             </div>
-            <div className={`text-xl font-extrabold font-mono ${nextgeneGeneProb.pLoss > 0.05 ? "text-rose-600" : "text-emerald-950"}`}>
+            <div className="text-xs font-bold font-mono text-emerald-800">
+              Profondeur moyenne : <span className="text-sm text-emerald-950 font-black">{geneNextgeneDepth}x</span>
+            </div>
+            <div className={`text-sm font-extrabold font-mono pt-1 ${nextgeneGeneProb.pLoss > 0.05 ? "text-rose-600" : "text-emerald-950"}`}>
               Proba Perte: {nextgeneGeneProb.pLoss < 0.0001 ? "< 0.01%" : `${(nextgeneGeneProb.pLoss * 100).toFixed(2)}%`}
             </div>
             <div className="text-[11px] text-slate-600">
@@ -575,12 +615,15 @@ export const VariantLossCalculator: React.FC<VariantLossCalculatorProps> = ({
           {/* BWA Status */}
           <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 shadow-xs space-y-1">
             <div className="flex items-center justify-between text-amber-900">
-              <span className="font-bold text-xs">BWA-MEM ({geneBwaDepth}x moy)</span>
+              <span className="font-bold text-xs">BWA-MEM</span>
               <span className="text-[10px] font-mono bg-amber-200 text-amber-900 font-bold px-1.5 py-0.5 rounded">
                 GATK
               </span>
             </div>
-            <div className="text-xl font-extrabold text-amber-950 font-mono">
+            <div className="text-xs font-bold font-mono text-amber-800">
+              Profondeur moyenne : <span className="text-sm text-amber-950 font-black">{geneBwaDepth}x</span>
+            </div>
+            <div className="text-sm font-extrabold text-amber-950 font-mono pt-1">
               Proba Perte: {bwaGeneProb.pLoss < 0.0001 ? "< 0.01%" : `${(bwaGeneProb.pLoss * 100).toFixed(2)}%`}
             </div>
             <div className="text-[11px] text-slate-600">

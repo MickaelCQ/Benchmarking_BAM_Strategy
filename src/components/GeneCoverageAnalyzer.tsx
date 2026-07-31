@@ -140,11 +140,11 @@ export const GeneCoverageAnalyzer: React.FC<GeneCoverageAnalyzerProps> = ({
       : CAPTURE_BED_GENES;
   }, [parsedBedStats]);
 
-  // Auto-fetch bench_coverage_metrics.json if placed in /public
+  // Auto-fetch benchmark_consolidated_data.json if placed in /public
   useEffect(() => {
     // Only auto-fetch if customDataset is not available
     if (!customDataset) {
-      fetch("/bench_coverage_metrics.json")
+      fetch("/benchmark_consolidated_data.json")
         .then((res) => {
           if (res.ok) return res.json();
           return null;
@@ -152,7 +152,7 @@ export const GeneCoverageAnalyzer: React.FC<GeneCoverageAnalyzerProps> = ({
         .then((data) => {
           if (Array.isArray(data) && data.length > 0) {
             setUploadedJsonData(data);
-            setUploadedJsonMessage(`✅ Données réelles auto-chargées (${data.length} régions)`);
+            setUploadedJsonMessage(`✅ Dataset consolidé auto-chargé (${data.length} échantillons)`);
           }
         })
         .catch(() => {});

@@ -100,6 +100,23 @@ export const FileDropZone: React.FC<FileDropZoneProps> = ({
     if (file) processFile(file);
   };
 
+  const handleLoadConsolidatedDefault = () => {
+    fetch("/benchmark_consolidated_data.json")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          const aligners = detectAlignersFromData(data);
+          setErrorMsg(null);
+          onJsonParsed(data, aligners, "benchmark_consolidated_data.json");
+        } else {
+          setErrorMsg("Impossible de charger benchmark_consolidated_data.json.");
+        }
+      })
+      .catch(() => {
+        setErrorMsg("Erreur de chargement de benchmark_consolidated_data.json.");
+      });
+  };
+
   const isCustomLoaded = !!activeBedFileName || !!activeJsonFileName;
 
   return (
@@ -185,7 +202,7 @@ export const FileDropZone: React.FC<FileDropZoneProps> = ({
 
             <button
               onClick={() => bedInputRef.current?.click()}
-              className="px-3.5 py-2 rounded-xl bg-white hover:bg-sky-50 text-sky-900 border border-sky-300 font-bold text-xs shadow-xs transition-colors flex items-center space-x-1.5"
+              className="px-3.5 py-2 rounded-xl bg-white hover:bg-sky-50 text-sky-900 border border-sky-300 font-bold text-xs shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer"
             >
               <FileCode className="h-4 w-4 text-sky-600" />
               <span>Importer Fichier BED (.bed)</span>
@@ -193,7 +210,7 @@ export const FileDropZone: React.FC<FileDropZoneProps> = ({
 
             <button
               onClick={() => jsonInputRef.current?.click()}
-              className="px-3.5 py-2 rounded-xl bg-white hover:bg-indigo-50 text-indigo-900 border border-indigo-300 font-bold text-xs shadow-xs transition-colors flex items-center space-x-1.5"
+              className="px-3.5 py-2 rounded-xl bg-white hover:bg-indigo-50 text-indigo-900 border border-indigo-300 font-bold text-xs shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer"
             >
               <FileJson className="h-4 w-4 text-indigo-600" />
               <span>Importer Benchmark JSON (.json)</span>
@@ -255,11 +272,11 @@ export const FileDropZone: React.FC<FileDropZoneProps> = ({
                 <span>Custom JSON</span>
               </span>
             ) : (
-              <span className="text-slate-400 font-normal">3 Aligneurs Démo</span>
+              <span className="text-emerald-700 bg-emerald-100 font-bold px-2 py-0.5 rounded text-[10px]">Benchmark Consolidé</span>
             )}
           </div>
           <div className="text-slate-700 font-mono text-[11px] truncate">
-            {activeJsonFileName || "bench_coverage_metrics.json"}
+            {activeJsonFileName || "benchmark_consolidated_data.json"}
           </div>
           {/* Aligner Badges */}
           <div className="flex flex-wrap gap-1.5 pt-0.5">

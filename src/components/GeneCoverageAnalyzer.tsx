@@ -142,21 +142,22 @@ export const GeneCoverageAnalyzer: React.FC<GeneCoverageAnalyzerProps> = ({
 
   // Auto-fetch bench_coverage_metrics.json if placed in /public
   useEffect(() => {
-    fetch("/bench_coverage_metrics.json")
-      .then((res) => {
-        if (res.ok) return res.json();
-        return null;
-      })
-      .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setUploadedJsonData(data);
-          setUploadedJsonMessage(`✅ Données réelles auto-chargées (${data.length} régions depuis bench_coverage_metrics.json)`);
-        }
-      })
-      .catch(() => {
-        // file not present in public dir yet, fallback silently
-      });
-  }, []);
+    // Only auto-fetch if customDataset is not available
+    if (!customDataset) {
+      fetch("/bench_coverage_metrics.json")
+        .then((res) => {
+          if (res.ok) return res.json();
+          return null;
+        })
+        .then((data) => {
+          if (Array.isArray(data) && data.length > 0) {
+            setUploadedJsonData(data);
+            setUploadedJsonMessage(`✅ Données réelles auto-chargées (${data.length} régions)`);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [customDataset]);
 
   // Filter available genes by search query
   const filteredGenes = useMemo(() => {
@@ -316,16 +317,57 @@ export const GeneCoverageAnalyzer: React.FC<GeneCoverageAnalyzerProps> = ({
 
   // Compute whole-gene aggregates across all panel genes for the "Gene Region coverage" tab
   const geneLevelAggregates = useMemo(() => {
+    let subset = customDataset || [];
+    if (selectedRun !== "ALL") {
+      subset = subset.filter((item) => item.runId === selectedRun);
+    }
+    if (selectedSample !== "ALL") {
+      subset = subset.filter((item) => item.sampleId === selectedSample);
+    }
+
+    const getAlignerGeneCoverage = (alignerKey: string, geneSymbol: string): number | null => {
+      if (subset.length === 0) return null;
+      const alignerItems = subset.filter((i) => {
+        const alg = (i.aligner || "").toLowerCase();
+        if (alignerKey === "dragen") return alg.includes("dragen");
+        if (alignerKey === "nextgene") return alg.includes("nextgene");
+        if (alignerKey === "bwa") return alg.includes("bwa");
+        return false;
+      });
+      if (alignerItems.length === 0) return null;
+      let sum = 0;
+      let count = 0;
+      for (const item of alignerItems) {
+        if (item.geneCoverage && typeof item.geneCoverage[geneSymbol] === "number") {
+          sum += item.geneCoverage[geneSymbol];
+          count++;
+        }
+      }
+      return count > 0 ? sum / count : null;
+    };
+
     return activeProfiles.map((profile) => {
       const exons = profile.exons;
       const count = exons.length || 1;
-      const dragenMean = exons.reduce((acc, e) => acc + e.dragenDepth, 0) / count;
-      const nextgeneMean = exons.reduce((acc, e) => acc + e.nextgeneDepth, 0) / count;
-      const bwaMean = exons.reduce((acc, e) => acc + e.bwaDepth, 0) / count;
 
-      const dragenPass = exons.reduce((acc, e) => acc + getPctCovered(e, "dragen"), 0) / count;
-      const nextgenePass = exons.reduce((acc, e) => acc + getPctCovered(e, "nextgene"), 0) / count;
-      const bwaPass = exons.reduce((acc, e) => acc + getPctCovered(e, "bwa"), 0) / count;
+      const realDragen = getAlignerGeneCoverage("dragen", profile.geneSymbol);
+      const realNextgene = getAlignerGeneCoverage("nextgene", profile.geneSymbol);
+      const realBwa = getAlignerGeneCoverage("bwa", profile.geneSymbol);
+
+      const dragenMean = realDragen !== null ? realDragen : exons.reduce((acc, e) => acc + e.dragenDepth, 0) / count;
+      const nextgeneMean = realNextgene !== null ? realNextgene : exons.reduce((acc, e) => acc + e.nextgeneDepth, 0) / count;
+      const bwaMean = realBwa !== null ? realBwa : exons.reduce((acc, e) => acc + e.bwaDepth, 0) / count;
+
+      // Pass % calculated based on threshold and mean depth
+      const calcPass = (depth: number) => {
+        if (depth >= depthThreshold * 2) return 99.8;
+        if (depth >= depthThreshold) return Math.min(99.8, 90 + (depth / depthThreshold) * 9);
+        return Math.max(10, Number(((depth / depthThreshold) * 90).toFixed(1)));
+      };
+
+      const dragenPass = realDragen !== null ? calcPass(dragenMean) : exons.reduce((acc, e) => acc + getPctCovered(e, "dragen"), 0) / count;
+      const nextgenePass = realNextgene !== null ? calcPass(nextgeneMean) : exons.reduce((acc, e) => acc + getPctCovered(e, "nextgene"), 0) / count;
+      const bwaPass = realBwa !== null ? calcPass(bwaMean) : exons.reduce((acc, e) => acc + getPctCovered(e, "bwa"), 0) / count;
 
       const meanGc = exons.reduce((acc, e) => acc + e.gcContentPct, 0) / count;
 
@@ -354,7 +396,7 @@ export const GeneCoverageAnalyzer: React.FC<GeneCoverageAnalyzerProps> = ({
         winningAligner: winning,
       };
     });
-  }, [depthThreshold]);
+  }, [depthThreshold, customDataset, selectedRun, selectedSample, activeProfiles]);
 
   const filteredGeneLevelAggregates = useMemo(() => {
     if (!geneSearchQuery.trim()) return geneLevelAggregates;

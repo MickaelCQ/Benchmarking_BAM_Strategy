@@ -1,17 +1,38 @@
+/**
+ * ============================================================================
+ * SERVEUR EXPLICITE & PROXY VITE - STRATÉGIE DE DESIGN EXPÉRIMENTAL EXOME
+ * ============================================================================
+ * Ce fichier est le point d'entrée principal du serveur backend Node.js (Express).
+ * 
+ * RÔLES PRINCIPAUX :
+ * 1. Mode Développement (process.env.NODE_ENV !== "production") :
+ *    - Intègre Vite comme middleware pour transpiler à la volée le code TypeScript/React.
+ * 2. Mode Production :
+ *    - Sert les fichiers statiques pré-compilés dans le dossier /dist.
+ * 3. Endpoints API (/api/*) :
+ *    - Proxie de manière sécurisée les requêtes vers l'API Gemini sans exposer la clé API au navigateur.
+ * ============================================================================
+ */
+
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 
+// Chargement des variables d'environnement depuis le fichier .env
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
 
+// Middleware pour parser les corps de requêtes au format JSON (limite augmentée pour gros JSON bed/coverage)
 app.use(express.json({ limit: "10mb" }));
 
-// Initialize Gemini client on the server side
+/**
+ * Client d'IA Générative Gemini (Google GenAI SDK)
+ * Initialisé uniquement côté serveur pour garder GEMINI_API_KEY confidentielle.
+ */
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || "",
   httpOptions: {
@@ -21,18 +42,24 @@ const ai = new GoogleGenAI({
   },
 });
 
-// Health check endpoint
+/**
+ * Route de santé (Healthcheck)
+ * Utile pour vérifier que le serveur répond correctement.
+ */
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Gemini AI Assistant route for Bioinformatic & Clinical interpretation
+/**
+ * Route API pour le Conseiller Scientifique IA (Bioinformatique & Design)
+ * Accepte un prompt utilisateur et un contexte optionnel de données de benchmark.
+ */
 app.post("/api/gemini/analyze", async (req, res) => {
   try {
     const { prompt, context } = req.body;
 
     if (!prompt) {
-      res.status(400).json({ error: "Prompt is required" });
+      res.status(400).json({ error: "Le prompt est obligatoire" });
       return;
     }
 
@@ -53,25 +80,31 @@ Provide scientifically rigorous, articulate, and actionable responses in clean M
 
     res.json({ text: response.text });
   } catch (error: any) {
-    console.error("Error in /api/gemini/analyze:", error);
+    console.error("Erreur backend dans /api/gemini/analyze:", error);
     res.status(500).json({
-      error: "Failed to generate AI scientific analysis",
+      error: "Échec de l'analyse scientifique IA",
       details: error.message || String(error),
     });
   }
 });
 
+/**
+ * Démarrage et configuration du serveur HTTP Express
+ */
 async function startServer() {
+  // Service des fichiers statiques généraux (ex: /public/benchmark_consolidated_data.json)
   const publicPath = path.join(process.cwd(), "public");
   app.use(express.static(publicPath));
 
   if (process.env.NODE_ENV !== "production") {
+    // Mode Développement : Intégration du serveur de dev Vite en mode middleware SPA
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
+    // Mode Production : Fichiers bundles produits par 'vite build' dans le dossier /dist
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res, next) => {
@@ -80,9 +113,11 @@ async function startServer() {
     });
   }
 
+  // Écoute sur le port 3000 et l'hôte 0.0.0.0 (requis pour conteneurs Linux / Cloud Run / Docker)
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`NGS Benchmark Server running on http://0.0.0.0:${PORT}`);
+    console.log(`[SERVEUR OK] Application accessible sur http://localhost:${PORT}`);
   });
 }
 
 startServer();
+

@@ -8,7 +8,7 @@ export const AiAdvisor: React.FC = () => {
   const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; text: string }>>([
     {
       role: "assistant",
-      text: "Bonjour ! Je suis votre conseiller scientifique expert en bioinformatique clinique et métriques d'alignement NGS. Comment puis-je vous aider à affiner la stratégie de benchmark pour vos échantillons WES (MF1284, MF1358, MF746) ou rédiger des sections spécifiques de votre article LaTeX ?",
+      text: "Bonjour ! Je suis votre conseiller en bioinformatique clinique et métriques d'alignement NGS. Comment puis-je vous aider à affiner la stratégie de design expérimental pour vos échantillons WES (MF1284, MF1358, MF746) ou interpréter les simulations de coût ?",
     },
   ]);
 
@@ -46,7 +46,7 @@ export const AiAdvisor: React.FC = () => {
           ...newMessages,
           {
             role: "assistant",
-            text: "Désolé, une erreur est survenue lors de l'analyse AI. Veuillez vérifier votre clé d'API dans Secrets.",
+            text: "Une interruption temporaire s'est produite. Veuillez réessayer votre question.",
           },
         ]);
       }
@@ -55,7 +55,7 @@ export const AiAdvisor: React.FC = () => {
         ...newMessages,
         {
           role: "assistant",
-          text: "Erreur de connexion au serveur backend AI Studio.",
+          text: "Impossible de joindre le module d'assistance scientifique.",
         },
       ]);
     } finally {

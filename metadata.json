@@ -1,6 +1,6 @@
 {
-  "name": "NGS Alignment Benchmark Suite",
-  "description": "High-rigor scientific comparison framework for Dragen, NextGENe, and BWA-Markdup WES alignments with LaTeX report and R figure generators.",
+  "name": "Stratégie de Design Expérimental Exome",
+  "description": "Plateforme interactive d'aide à la décision pour le design expérimental et l'optimisation des coûts en séquençage d'exome (WES) et panel constitutionnel/oncologique.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

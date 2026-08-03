@@ -316,14 +316,16 @@ export const CostSimulationModeler: React.FC = () => {
             <div className="bg-slate-800/60 p-3.5 rounded-xl border border-sky-800/50 space-y-1.5">
               <div className="font-bold text-emerald-300 flex items-center space-x-1.5">
                 <DollarSign className="h-4 w-4 text-emerald-400" />
-                <span>2. Qu'est-ce que le Spike-In et son surcoût de +1 480 € ?</span>
+                <span>2. Qu'est-ce que le Spike-In (Sondes Additionnelles) et son surcoût de +1 480 € ?</span>
               </div>
               <p className="text-slate-300">
-                Le **Spike-In** est l'ajout d'une librairie témoin / contrôle qualité interne (ex: PhiX ou régulation de diversité) dans le flowcell. Dans le cas d'usage de votre laboratoire :
+                Le **Spike-In** de capture consiste à **ajouter des sondes complémentaires pour cibler des régions génomiques initialement non prévues** dans le kit de base (par exemple : extension aux régions intronic flanquantes, sites d'épissage profonds, UTR ou gènes candidats supplémentaires).
                 <br />
-                • **Sans Spike-In** : Coût du run = **5 820 €** (soit **157 €/échantillon** pour 37 échantillons).
+                Cet élargissement du territoire cible engendre un **surcoût direct de réactifs de capture et un besoin accru en volume de séquençage** sur la cassette :
                 <br />
-                • **Avec Spike-In** : Coût du run = **7 300 €** (soit **197 €/échantillon** pour 37 échantillons, surcoût exact de **+1 480 €**).
+                • **Sans Spike-In** (Capture standard) : Coût du run = **5 820 €** (soit **157 €/échantillon** sur 37 échantillons).
+                <br />
+                • **Avec Spike-In** (Extension sondes/introns) : Coût du run = **7 300 €** (soit **197 €/échantillon** sur 37 échantillons, soit un surcoût exact de **+1 480 €**).
               </p>
             </div>
           </div>

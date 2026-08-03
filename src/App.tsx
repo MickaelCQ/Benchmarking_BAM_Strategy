@@ -4,6 +4,7 @@ import { OverviewSection } from "./components/OverviewSection";
 import { MetricsDashboard } from "./components/MetricsDashboard";
 import { GeneCoverageAnalyzer } from "./components/GeneCoverageAnalyzer";
 import { CtDnaLodCalculator } from "./components/CtDnaLodCalculator";
+import { CostSimulationModeler } from "./components/CostSimulationModeler";
 import { RScriptGenerator } from "./components/RScriptGenerator";
 import { LaTeXReportGenerator } from "./components/LaTeXReportGenerator";
 import { CliPipelineGuide } from "./components/CliPipelineGuide";
@@ -128,6 +129,7 @@ export default function App() {
             selectedSample={selectedSample}
             selectedRun={selectedRun}
             customDataset={customDataset}
+            onDatasetChange={(data) => setCustomDataset(data)}
           />
         )}
         {activeTab === "gene-region-coverage" && (
@@ -136,6 +138,7 @@ export default function App() {
             selectedSample={selectedSample}
             selectedRun={selectedRun}
             customDataset={customDataset}
+            onDatasetChange={(data) => setCustomDataset(data)}
           />
         )}
         {(activeTab === "variant-loss-prob" || activeTab === "ctdna-lod") && (
@@ -143,8 +146,10 @@ export default function App() {
             selectedSample={selectedSample}
             selectedRun={selectedRun}
             customDataset={customDataset}
+            onDatasetChange={(data) => setCustomDataset(data)}
           />
         )}
+        {activeTab === "cost-simulation" && <CostSimulationModeler />}
         {activeTab === "r-scripts" && <RScriptGenerator />}
         {activeTab === "latex" && <LaTeXReportGenerator />}
         {activeTab === "cli" && <CliPipelineGuide />}

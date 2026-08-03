@@ -62,6 +62,9 @@ Provide scientifically rigorous, articulate, and actionable responses in clean M
 });
 
 async function startServer() {
+  const publicPath = path.join(process.cwd(), "public");
+  app.use(express.static(publicPath));
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -71,7 +74,8 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
+    app.get("*", (req, res, next) => {
+      if (req.path.startsWith("/api")) return next();
       res.sendFile(path.join(distPath, "index.html"));
     });
   }

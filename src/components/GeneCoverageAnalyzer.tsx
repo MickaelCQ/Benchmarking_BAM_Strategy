@@ -48,6 +48,7 @@ interface GeneCoverageAnalyzerProps {
   selectedSample?: string;
   selectedRun?: string;
   customDataset?: any[] | null;
+  onDatasetChange?: (data: any[]) => void;
 }
 
 export const GeneCoverageAnalyzer: React.FC<GeneCoverageAnalyzerProps> = ({
@@ -55,6 +56,7 @@ export const GeneCoverageAnalyzer: React.FC<GeneCoverageAnalyzerProps> = ({
   selectedSample = "ALL",
   selectedRun = "ALL",
   customDataset,
+  onDatasetChange,
 }) => {
   const [selectedGeneSymbol, setSelectedGeneSymbol] = useState<string>("COL3A1");
   const [geneSearchQuery, setGeneSearchQuery] = useState<string>("");
@@ -98,6 +100,9 @@ export const GeneCoverageAnalyzer: React.FC<GeneCoverageAnalyzerProps> = ({
     setActiveJsonFileName(fileName);
     if (data) {
       setUploadedJsonMessage(`✅ ${data.length} régions importées (${aligners.map(a => a.name).join(", ")})`);
+      if (onDatasetChange) {
+        onDatasetChange(data);
+      }
     }
   };
 

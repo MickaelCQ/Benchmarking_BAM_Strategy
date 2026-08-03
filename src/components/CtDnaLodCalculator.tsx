@@ -40,12 +40,14 @@ interface VariantLossCalculatorProps {
   selectedSample?: string;
   selectedRun?: string;
   customDataset?: any[] | null;
+  onDatasetChange?: (data: any[]) => void;
 }
 
 export const VariantLossCalculator: React.FC<VariantLossCalculatorProps> = ({
   selectedSample = "ALL",
   selectedRun = "ALL",
   customDataset: parentCustomDataset,
+  onDatasetChange,
 }) => {
   const [selectedGeneSymbol, setSelectedGeneSymbol] = useState<string>("COL3A1");
   const [targetVafPct, setTargetVafPct] = useState<number>(20.0); // 20% VAF as default requested

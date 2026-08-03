@@ -13,6 +13,10 @@ import {
   Sliders,
   DollarSign,
   PieChart,
+  HelpCircle,
+  Maximize2,
+  Scale,
+  Zap,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -43,28 +47,29 @@ export interface CassetteOption {
 }
 
 export const CostSimulationModeler: React.FC = () => {
-  // Preset default activities matching user's spreadsheet example
+  // Baseline default activities matching user's exact spreadsheet
+  // (Ratio 300 : 120 : 80)
   const defaultActivities: ActivityRow[] = [
     { id: "act_1", name: "Exome panel (ex: Marfan / Cardio)", depthTarget: 300, sampleCount: 5 },
     { id: "act_2", name: "Exome classique (ex: Biochimie)", depthTarget: 120, sampleCount: 20 },
     { id: "act_3", name: "Exome trio (ex: Prénatal)", depthTarget: 80, sampleCount: 12 },
   ];
 
-  // Customizable Cassettes / Flowcells
+  // Preset Cassettes / Flowcells
   const [cassettes, setCassettes] = useState<CassetteOption[]>([
     {
       id: "P4_S4",
       name: "Flowcell P4 / S4 (Haute Capacité 4800X)",
       capacityX: 4800,
       priceEuro: 5820,
-      description: "Séquençage grand volume mutualisé pour cohortes hospitalières",
+      description: "Séquençage grand volume mutualisé pour cohortes hospitalières (Exemple standard)",
     },
     {
       id: "P2_S2",
       name: "Flowcell P2 / S2 (Moyenne Capacité 2400X)",
       capacityX: 2400,
       priceEuro: 3400,
-      description: "Séquençage intermédiaire pour sous-séries régulières",
+      description: "Séquençage intermédiaire pour séries régulières",
     },
     {
       id: "P1_Micro",
@@ -77,26 +82,39 @@ export const CostSimulationModeler: React.FC = () => {
 
   const [selectedCassetteId, setSelectedCassetteId] = useState<string>("P4_S4");
   const [activities, setActivities] = useState<ActivityRow[]>(defaultActivities);
+  
+  // Spike-in parameters matching exact user spreadsheet:
+  // Base cost = 5 820 € (157 €/ech for 37 samples)
+  // With spike-in = 7 300 € (197 €/ech for 37 samples) -> Delta = 1 480 €
   const [useSpikeIn, setUseSpikeIn] = useState<boolean>(false);
-  const [spikeInPrice, setSpikeInPrice] = useState<number>(250); // € pour contrôle spike-in
-  const [customCassettePrice, setCustomCassettePrice] = useState<number | null>(null);
+  const [baseCassettePrice, setBaseCassettePrice] = useState<number>(5820);
+  const [spikeInSupplementCost, setSpikeInSupplementCost] = useState<number>(1480);
+  const [showExplanation, setShowExplanation] = useState<boolean>(true);
 
-  // Active cassette selection
+  // Bi-directional / Proportionate Scaling Factor (1.0 = baseline 100%)
+  const [globalScaleFactor, setGlobalScaleFactor] = useState<number>(1.0);
+
+  // Current active cassette object
   const activeCassette = useMemo(() => {
     const found = cassettes.find((c) => c.id === selectedCassetteId) || cassettes[0];
-    if (customCassettePrice !== null) {
-      return { ...found, priceEuro: customCassettePrice };
-    }
-    return found;
-  }, [cassettes, selectedCassetteId, customCassettePrice]);
+    return { ...found, priceEuro: baseCassettePrice };
+  }, [cassettes, selectedCassetteId, baseCassettePrice]);
+
+  // Scaled activities based on globalScaleFactor
+  const scaledActivities = useMemo(() => {
+    return activities.map((act) => ({
+      ...act,
+      effectiveDepth: Math.round(act.depthTarget * globalScaleFactor),
+    }));
+  }, [activities, globalScaleFactor]);
 
   // Calculations
   const totals = useMemo(() => {
     let totalSamples = 0;
     let totalXBurden = 0;
 
-    const activityDetails = activities.map((act) => {
-      const rowBurdenX = act.depthTarget * act.sampleCount;
+    const activityDetails = scaledActivities.map((act) => {
+      const rowBurdenX = act.effectiveDepth * act.sampleCount;
       totalSamples += act.sampleCount;
       totalXBurden += rowBurdenX;
       return {
@@ -105,11 +123,9 @@ export const CostSimulationModeler: React.FC = () => {
       };
     });
 
-    const baseCassetteCost = activeCassette.priceEuro;
-    const effectiveSpikeCost = useSpikeIn ? spikeInPrice : 0;
-    const totalCostNoSpike = baseCassetteCost;
-    const totalCostWithSpike = baseCassetteCost + spikeInPrice;
-    const currentTotalCost = baseCassetteCost + effectiveSpikeCost;
+    const currentTotalCost = useSpikeIn
+      ? baseCassettePrice + spikeInSupplementCost
+      : baseCassettePrice;
 
     const fillRatePct = activeCassette.capacityX > 0 ? (totalXBurden / activeCassette.capacityX) * 100 : 0;
 
@@ -118,7 +134,7 @@ export const CostSimulationModeler: React.FC = () => {
 
     // Prorated cost per activity
     const activityCosts = activityDetails.map((act) => {
-      const costPerSample = act.depthTarget * costPerX;
+      const costPerSample = act.effectiveDepth * costPerX;
       const totalActivityCost = costPerSample * act.sampleCount;
       const pctOfTotalCost = currentTotalCost > 0 ? (totalActivityCost / currentTotalCost) * 100 : 0;
       return {
@@ -134,32 +150,36 @@ export const CostSimulationModeler: React.FC = () => {
       totalXBurden,
       fillRatePct,
       currentTotalCost,
-      totalCostNoSpike,
-      totalCostWithSpike,
       avgCostPerSampleOverall,
       costPerX,
       activityCosts,
     };
-  }, [activities, activeCassette, useSpikeIn, spikeInPrice]);
+  }, [scaledActivities, activeCassette, useSpikeIn, baseCassettePrice, spikeInSupplementCost]);
 
   // Curve data generator (N = 1 to 60 samples)
   const curveData = useMemo(() => {
     const data = [];
-    const baseCassetteCost = activeCassette.priceEuro;
+    const costWithoutSpike = baseCassettePrice;
+    const costWithSpike = baseCassettePrice + spikeInSupplementCost;
 
     for (let n = 1; n <= 60; n++) {
-      const costNoSpike = Number((baseCassetteCost / n).toFixed(2));
-      const costWithSpike = Number(((baseCassetteCost + spikeInPrice) / n).toFixed(2));
+      const cNoSpike = Number((costWithoutSpike / n).toFixed(2));
+      const cWithSpike = Number((costWithSpike / n).toFixed(2));
 
       data.push({
         n,
-        costNoSpike,
-        costWithSpike,
-        currentChoice: useSpikeIn ? costWithSpike : costNoSpike,
+        costNoSpike: cNoSpike,
+        costWithSpike: cWithSpike,
+        activeCurveCost: useSpikeIn ? cWithSpike : cNoSpike,
       });
     }
     return data;
-  }, [activeCassette, spikeInPrice, useSpikeIn]);
+  }, [baseCassettePrice, spikeInSupplementCost, useSpikeIn]);
+
+  // Handle global scale change from slider or input
+  const handleScaleFactorChange = (newFactor: number) => {
+    setGlobalScaleFactor(Math.max(0.1, Math.min(3.0, newFactor)));
+  };
 
   // Add new activity row
   const handleAddActivity = () => {
@@ -175,6 +195,11 @@ export const CostSimulationModeler: React.FC = () => {
     setActivities(
       activities.map((a) => {
         if (a.id === id) {
+          // If editing depth target directly, divide by scale factor so base ratio is updated
+          if (field === "depthTarget") {
+            const rawVal = Math.max(1, Number(value));
+            return { ...a, depthTarget: Math.round(rawVal / globalScaleFactor) };
+          }
           return { ...a, [field]: value };
         }
         return a;
@@ -188,24 +213,25 @@ export const CostSimulationModeler: React.FC = () => {
     setActivities(activities.filter((a) => a.id !== id));
   };
 
-  // Reset to default spreadsheet parameters
+  // Reset to default spreadsheet values
   const handleReset = () => {
     setActivities(defaultActivities);
     setSelectedCassetteId("P4_S4");
     setUseSpikeIn(false);
-    setSpikeInPrice(250);
-    setCustomCassettePrice(null);
+    setBaseCassettePrice(5820);
+    setSpikeInSupplementCost(1480);
+    setGlobalScaleFactor(1.0);
   };
 
   // Export to CSV
   const handleExportCSV = () => {
     let csv = "Activité;Profondeur Visée (X);Nombre Échantillons;Charge Totale (X);Coût Unitaire Est. (€);Coût Total Activité (€);% Coût Total\n";
     totals.activityCosts.forEach((a) => {
-      csv += `"${a.name}";${a.depthTarget};${a.sampleCount};${a.rowBurdenX};${a.costPerSample.toFixed(2)};${a.totalActivityCost.toFixed(2)};${a.pctOfTotalCost.toFixed(1)}%\n`;
+      csv += `"${a.name}";${a.effectiveDepth};${a.sampleCount};${a.rowBurdenX};${a.costPerSample.toFixed(2)};${a.totalActivityCost.toFixed(2)};${a.pctOfTotalCost.toFixed(1)}%\n`;
     });
     csv += `\nTOTAL;--;${totals.totalSamples};${totals.totalXBurden} X;${totals.avgCostPerSampleOverall.toFixed(2)} €/échantillon;${totals.currentTotalCost.toFixed(2)} €;100%\n`;
     csv += `Cassette;${activeCassette.name};Capacité: ${activeCassette.capacityX} X;Taux Remplissage: ${totals.fillRatePct.toFixed(1)}%\n`;
-    csv += `Option Spike-in;${useSpikeIn ? "OUI (+250 €)" : "NON"}\n`;
+    csv += `Option Spike-in;${useSpikeIn ? "OUI (+1480 € surcoût total -> 7300 €)" : "NON (5820 € total)"}\n`;
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -230,11 +256,18 @@ export const CostSimulationModeler: React.FC = () => {
             </h2>
           </div>
           <p className="text-xs text-slate-500 max-w-3xl">
-            Simulateur financier de séquençage à haut débit : répartissez le coût fixe d'une cassette/flowcell entre plusieurs activités diagnostics (Panel, Exome, Trios) selon la profondeur ciblée ($X$), le nombre d'échantillons et le mode avec/sans spike-in.
+            Simulateur financier interactif pour le séquençage NGS mutualisé : répartissez le coût fixe d'une cassette/flowcell entre vos différentes activités diagnostics (Panel, Exome classique, Exome Trio) selon la profondeur $X$, le nombre d'échantillons et le choix de spike-in.
           </p>
         </div>
 
         <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setShowExplanation(!showExplanation)}
+            className="flex items-center space-x-1.5 px-3 py-2 text-xs font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-xl transition-colors border border-sky-200"
+          >
+            <HelpCircle className="h-3.5 w-3.5" />
+            <span>Explication Spike-in & Capacity</span>
+          </button>
           <button
             onClick={handleReset}
             className="flex items-center space-x-1.5 px-3 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors border border-slate-200"
@@ -251,6 +284,51 @@ export const CostSimulationModeler: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Educational Callout: Explanation of "X par cassette" & "Spike-In" */}
+      {showExplanation && (
+        <div className="bg-gradient-to-r from-sky-900 via-indigo-900 to-slate-900 text-white p-5 rounded-2xl shadow-md border border-sky-700 space-y-3 relative">
+          <button
+            onClick={() => setShowExplanation(false)}
+            className="absolute top-3 right-3 text-slate-400 hover:text-white text-xs px-2 py-1 bg-slate-800/80 rounded-md"
+          >
+            Masquer ✕
+          </button>
+
+          <div className="flex items-center space-x-2">
+            <Info className="h-5 w-5 text-sky-400 shrink-0" />
+            <h3 className="text-sm font-bold text-sky-200 uppercase tracking-wide">
+              Explication Technique : Capacité en Profondeur ($X$) & Impact Financier du Spike-In
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-200 leading-relaxed pt-1">
+            <div className="bg-slate-800/60 p-3.5 rounded-xl border border-sky-800/50 space-y-1.5">
+              <div className="font-bold text-sky-300 flex items-center space-x-1.5">
+                <Zap className="h-4 w-4 text-amber-400" />
+                <span>1. D'où vient la notion de "4 800 X" par cassette P4 ?</span>
+              </div>
+              <p className="text-slate-300">
+                Une flowcell haut débit (ex: Illumina P4 / S4) génère un rendement fixe de gigabases ($Gb$). Lorsqu'on référence cette capacité par rapport à la taille d'un exome/panel cible (ex: ~30-40 Mb ciblés), cela équivaut à un **budget cumulé de 4 800 $X$** à se partager entre tous les échantillons du run.
+              </p>
+            </div>
+
+            <div className="bg-slate-800/60 p-3.5 rounded-xl border border-sky-800/50 space-y-1.5">
+              <div className="font-bold text-emerald-300 flex items-center space-x-1.5">
+                <DollarSign className="h-4 w-4 text-emerald-400" />
+                <span>2. Qu'est-ce que le Spike-In et son surcoût de +1 480 € ?</span>
+              </div>
+              <p className="text-slate-300">
+                Le **Spike-In** est l'ajout d'une librairie témoin / contrôle qualité interne (ex: PhiX ou régulation de diversité) dans le flowcell. Dans le cas d'usage de votre laboratoire :
+                <br />
+                • **Sans Spike-In** : Coût du run = **5 820 €** (soit **157 €/échantillon** pour 37 échantillons).
+                <br />
+                • **Avec Spike-In** : Coût du run = **7 300 €** (soit **197 €/échantillon** pour 37 échantillons, surcoût exact de **+1 480 €**).
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Primary KPI Highlights */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -312,7 +390,7 @@ export const CostSimulationModeler: React.FC = () => {
             {totals.currentTotalCost.toLocaleString()} €
           </div>
           <div className="text-[11px] text-slate-400 font-mono">
-            {useSpikeIn ? `Inclus Spike-in (+${spikeInPrice}€)` : "Sans spike-in"}
+            {useSpikeIn ? `Inclus Spike-in (7300€)` : "Sans spike-in (5820€)"}
           </div>
         </div>
 
@@ -331,6 +409,46 @@ export const CostSimulationModeler: React.FC = () => {
         </div>
       </div>
 
+      {/* Dynamic Bi-Directional Scaling Control Panel */}
+      <div className="bg-gradient-to-r from-indigo-50 via-sky-50 to-indigo-50 p-5 rounded-2xl border border-indigo-200 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center space-x-2">
+            <Scale className="h-5 w-5 text-indigo-600 shrink-0" />
+            <h3 className="text-sm font-bold text-indigo-950">
+              Ajustement Proportionnel de la Profondeur Globale (Bijectif / Échelle Proportonnelle)
+            </h3>
+          </div>
+          <div className="text-xs font-mono font-bold text-indigo-900 bg-white px-3 py-1 rounded-lg border border-indigo-200 shadow-xs">
+            Facteur d'échelle : {(globalScaleFactor * 100).toFixed(0)}% ({totals.totalXBurden} X cumulés)
+          </div>
+        </div>
+
+        <p className="text-xs text-slate-600">
+          En déplaçant le curseur ci-dessous, ajustez la profondeur de toutes les activités simultanément tout en <strong>conservant scrupuleusement les proportions relatives</strong> entres activités (300X : 120X : 80X). La position sur la courbe d'amortissement et le coût unitaire se mettent à jour instantanément.
+        </p>
+
+        <div className="flex items-center space-x-4 pt-1">
+          <span className="text-xs font-bold font-mono text-slate-500">50%</span>
+          <input
+            type="range"
+            min="0.5"
+            max="2.0"
+            step="0.05"
+            value={globalScaleFactor}
+            onChange={(e) => handleScaleFactorChange(parseFloat(e.target.value))}
+            className="w-full h-2.5 bg-indigo-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+          />
+          <span className="text-xs font-bold font-mono text-slate-500">200%</span>
+
+          <button
+            onClick={() => setGlobalScaleFactor(1.0)}
+            className="px-3 py-1.5 text-xs font-bold text-indigo-700 bg-white hover:bg-indigo-100 rounded-lg border border-indigo-300 transition-colors shrink-0"
+          >
+            100% (Standard)
+          </button>
+        </div>
+      </div>
+
       {/* Main Grid: Parameters vs Dynamic Curve */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Configuration Controls & Activities Matrix */}
@@ -340,79 +458,84 @@ export const CostSimulationModeler: React.FC = () => {
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
                 <Sparkles className="h-4 w-4 text-indigo-600" />
-                <span>1. Choix de la Cassette / Flowcell de Séquençage</span>
+                <span>1. Paramétrage Cassette & Condition Spike-In</span>
               </h3>
-              <span className="text-xs text-slate-500 font-mono">Prix Réactif + Support</span>
+              <span className="text-xs text-slate-500 font-mono">Conforme Données Labo</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {cassettes.map((c) => {
-                const isSelected = selectedCassetteId === c.id;
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => {
-                      setSelectedCassetteId(c.id);
-                      setCustomCassettePrice(null);
-                    }}
-                    className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
-                      isSelected
-                        ? "border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/20"
-                        : "border-slate-200 hover:border-slate-300 bg-white"
-                    }`}
-                  >
-                    <div>
-                      <div className="text-xs font-bold text-slate-900">{c.name.split(" (")[0]}</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">{c.capacityX} X max</div>
-                    </div>
-                    <div className="mt-3 font-mono font-black text-sm text-indigo-950">
-                      {c.priceEuro} €
-                    </div>
-                  </button>
-                );
-              })}
+            {/* Toggle Spike-in Mode - Exact spreadsheet values */}
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+              <label className="block text-xs font-bold text-slate-800">
+                Choix du mode de séquençage (Avec / Sans Spike-In) :
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setUseSpikeIn(false)}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    !useSpikeIn
+                      ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                      : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
+                  }`}
+                >
+                  <div className="text-xs font-bold flex items-center justify-between">
+                    <span>Sans Spike-In</span>
+                    {!useSpikeIn && <CheckCircle2 className="h-4 w-4 text-emerald-400" />}
+                  </div>
+                  <div className="text-lg font-black font-mono mt-1">
+                    5 820 €
+                  </div>
+                  <div className="text-[10px] opacity-80 mt-0.5">
+                    157 € / échantillon (sur 37 ech)
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => setUseSpikeIn(true)}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    useSpikeIn
+                      ? "bg-emerald-800 text-white border-emerald-700 shadow-sm"
+                      : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
+                  }`}
+                >
+                  <div className="text-xs font-bold flex items-center justify-between">
+                    <span>Avec Spike-In (+1480€)</span>
+                    {useSpikeIn && <CheckCircle2 className="h-4 w-4 text-emerald-300" />}
+                  </div>
+                  <div className="text-lg font-black font-mono mt-1">
+                    7 300 €
+                  </div>
+                  <div className="text-[10px] opacity-80 mt-0.5">
+                    197 € / échantillon (sur 37 ech)
+                  </div>
+                </button>
+              </div>
             </div>
 
-            {/* Custom Price Input & Spike-in Toggle */}
-            <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-100">
+            {/* Custom Prices Fields */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Prix personnalisé cassette (€)
+                  Coût Cassette Sans Spike-In (€)
                 </label>
                 <input
                   type="number"
-                  value={customCassettePrice !== null ? customCassettePrice : activeCassette.priceEuro}
-                  onChange={(e) => setCustomCassettePrice(Math.max(0, Number(e.target.value)))}
+                  value={baseCassettePrice}
+                  onChange={(e) => setBaseCassettePrice(Math.max(0, Number(e.target.value)))}
                   className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Contrôle Spike-In / Témoin Interne
+                  Surcoût Option Spike-In (€)
                 </label>
-                <div className="flex items-center space-x-2 pt-0.5">
-                  <button
-                    onClick={() => setUseSpikeIn(false)}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition-all ${
-                      !useSpikeIn
-                        ? "bg-slate-900 text-white border-slate-900"
-                        : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
-                    }`}
-                  >
-                    Sans spike-in
-                  </button>
-                  <button
-                    onClick={() => setUseSpikeIn(true)}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition-all ${
-                      useSpikeIn
-                        ? "bg-emerald-600 text-white border-emerald-600"
-                        : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
-                    }`}
-                  >
-                    Avec spike-in (+{spikeInPrice}€)
-                  </button>
-                </div>
+                <input
+                  type="number"
+                  value={spikeInSupplementCost}
+                  onChange={(e) => setSpikeInSupplementCost(Math.max(0, Number(e.target.value)))}
+                  className="w-full text-xs font-mono px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
               </div>
             </div>
           </div>
@@ -423,10 +546,10 @@ export const CostSimulationModeler: React.FC = () => {
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
                   <Sliders className="h-4 w-4 text-sky-600" />
-                  <span>2. Paramétrage des Activités & Profondeurs Attendues</span>
+                  <span>2. Paramétrage des Activités & Nombres d'Échantillons</span>
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  Ajustez les lignes d'activité diagnostics, le nombre d'échantillons et la profondeur $X$ voulue.
+                  Modifiez la liste des activités ou les profondeurs de référence (modifiées par le facteur d'échelle).
                 </p>
               </div>
 
@@ -440,8 +563,8 @@ export const CostSimulationModeler: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              {activities.map((act, index) => {
-                const calculatedX = act.depthTarget * act.sampleCount;
+              {scaledActivities.map((act, index) => {
+                const calculatedX = act.effectiveDepth * act.sampleCount;
                 return (
                   <div
                     key={act.id}
@@ -474,12 +597,14 @@ export const CostSimulationModeler: React.FC = () => {
                       </div>
 
                       <div className="sm:col-span-3">
-                        <label className="block text-[10px] text-slate-500 font-medium">Depth attendu (X)</label>
+                        <label className="block text-[10px] text-slate-500 font-medium">
+                          Depth Effectif ({act.effectiveDepth}X)
+                        </label>
                         <input
                           type="number"
                           min="1"
-                          value={act.depthTarget}
-                          onChange={(e) => handleUpdateActivity(act.id, "depthTarget", Math.max(1, Number(e.target.value)))}
+                          value={act.effectiveDepth}
+                          onChange={(e) => handleUpdateActivity(act.id, "depthTarget", e.target.value)}
                           className="w-full text-xs font-mono px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none"
                         />
                       </div>
@@ -517,15 +642,15 @@ export const CostSimulationModeler: React.FC = () => {
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
                   <TrendingDown className="h-4 w-4 text-indigo-600" />
-                  <span>3. Courbe Dynamique d'Amortissement du Coût par Échantillon</span>
+                  <span>3. Courbe Amortissement du Coût par Échantillon</span>
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  Évolution du coût unitaire (€/échantillon) en fonction du nombre total d'échantillons sur la cassette.
+                  Évolution du coût unitaire (€/échantillon) selon le nombre total $N$ d'échantillons sur la cassette.
                 </p>
               </div>
 
               <div className="text-right font-mono text-xs text-indigo-900 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100 font-bold">
-                Point actuel : N={totals.totalSamples} ({totals.avgCostPerSampleOverall.toFixed(1)}€)
+                N={totals.totalSamples} ech → {totals.avgCostPerSampleOverall.toFixed(0)} € / ech
               </div>
             </div>
 
@@ -548,24 +673,24 @@ export const CostSimulationModeler: React.FC = () => {
                     contentStyle={{ backgroundColor: "#0f172a", borderRadius: "0.75rem", color: "#ffffff", border: "none", fontSize: "12px" }}
                     formatter={(val: any, name: any) => [
                       `${Number(val).toFixed(2)} €`,
-                      name === "costNoSpike" ? "Sans spike-in" : "Avec spike-in",
+                      name === "costNoSpike" ? "Sans Spike-In (5820€)" : "Avec Spike-In (7300€)",
                     ]}
-                    labelFormatter={(label) => `${label} Échantillons`}
+                    labelFormatter={(label) => `${label} Échantillons sur le Run`}
                   />
                   <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: "11px" }} />
 
                   <Line
                     type="monotone"
                     dataKey="costNoSpike"
-                    name="Sans spike-in (€/ech)"
+                    name="Sans Spike-In (5 820 €)"
                     stroke="#0284c7"
-                    strokeWidth={useSpikeIn ? 1.5 : 3}
+                    strokeWidth={!useSpikeIn ? 3 : 1.5}
                     dot={false}
                   />
                   <Line
                     type="monotone"
                     dataKey="costWithSpike"
-                    name="Avec spike-in (+250€)"
+                    name="Avec Spike-In (7 300 €)"
                     stroke="#059669"
                     strokeWidth={useSpikeIn ? 3 : 1.5}
                     strokeDasharray={useSpikeIn ? undefined : "4 4"}
@@ -580,7 +705,7 @@ export const CostSimulationModeler: React.FC = () => {
                       strokeWidth={2}
                       strokeDasharray="3 3"
                       label={{
-                        value: `Actuel: ${totals.totalSamples} ech (${totals.avgCostPerSampleOverall.toFixed(0)}€)`,
+                        value: `Actuel: N=${totals.totalSamples} (${totals.avgCostPerSampleOverall.toFixed(0)}€)`,
                         position: "top",
                         fill: "#6d28d9",
                         fontSize: 10,
@@ -609,9 +734,9 @@ export const CostSimulationModeler: React.FC = () => {
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
                 <PieChart className="h-4 w-4 text-emerald-600" />
-                <span>4. Ventilation du Coût Proratisé par Activité</span>
+                <span>4. Tableau des Coûts Proratisés par Activité</span>
               </h3>
-              <span className="text-xs text-slate-500 font-mono">Pondération par la Profondeur $X$</span>
+              <span className="text-xs text-slate-500 font-mono">Pondération par la Charge $X$</span>
             </div>
 
             <div className="overflow-x-auto">
@@ -630,7 +755,7 @@ export const CostSimulationModeler: React.FC = () => {
                   {totals.activityCosts.map((a) => (
                     <tr key={a.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-2 px-3 font-sans font-medium text-slate-800">{a.name}</td>
-                      <td className="py-2 px-2 text-center text-slate-600">{a.depthTarget}X</td>
+                      <td className="py-2 px-2 text-center text-slate-600">{a.effectiveDepth}X</td>
                       <td className="py-2 px-2 text-center text-slate-600">{a.sampleCount}</td>
                       <td className="py-2 px-2 text-right text-indigo-900 font-bold">{a.rowBurdenX} X</td>
                       <td className="py-2 px-3 text-right font-bold text-sky-900">{a.costPerSample.toFixed(2)} €</td>
